@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type PromptCategory = "Personal" | "Opinion" | "Creative" | "Abstract" | "Silly";
 type FilterCategory = "All" | PromptCategory;
@@ -96,9 +96,37 @@ export default function Home() {
   );
   const [secondsLeft, setSecondsLeft] = useState(TIMER_DURATION);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [hasRecording, setHasRecording] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [recordingError, setRecordingError] = useState("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     document.title = "Off The Cuff";
+  }, []);
+
+  useEffect(() => {
+    if (!audioUrl) {
+      return;
+    }
+
+    return () => {
+      URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -111,6 +139,19 @@ export default function Home() {
     setCurrentPrompt(null);
     setIsTimerRunning(false);
     setSecondsLeft(TIMER_DURATION);
+    setIsRecording(false);
+    setHasRecording(false);
+    setRecordingError("");
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    setAudioUrl(null);
   }, [activeCategory]);
 
   useEffect(() => {
@@ -149,6 +190,41 @@ export default function Home() {
     };
   }, [isTimerRunning]);
 
+  useEffect(() => {
+    if (secondsLeft !== 0 || !isRecording) {
+      return;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+  }, [isRecording, secondsLeft]);
+
+  const stopAndReleaseMicrophone = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+  };
+
+  const clearRecording = () => {
+    stopAndReleaseMicrophone();
+    setIsRecording(false);
+    setHasRecording(false);
+    setRecordingError("");
+    audioChunksRef.current = [];
+    setAudioUrl((previousUrl) => {
+      if (previousUrl) {
+        URL.revokeObjectURL(previousUrl);
+      }
+      return null;
+    });
+  };
+
   const pickPrompt = () => {
     if (PROMPTS.length === 0) {
       return;
@@ -180,12 +256,84 @@ export default function Home() {
     setCurrentPrompt(nextPrompt);
     setUnusedPrompts(remainingPrompts);
     setSecondsLeft(TIMER_DURATION);
-    setIsTimerRunning(true);
+    setIsTimerRunning(false);
+    clearRecording();
   };
 
   const resetTimer = () => {
+    stopAndReleaseMicrophone();
+    setIsRecording(false);
     setIsTimerRunning(false);
     setSecondsLeft(TIMER_DURATION);
+  };
+
+  const startRecording = async () => {
+    if (!currentPrompt || isRecording) {
+      return;
+    }
+
+    clearRecording();
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const recording = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        audioChunksRef.current = [];
+        if (recording.size > 0) {
+          const nextAudioUrl = URL.createObjectURL(recording);
+          setAudioUrl((previousUrl) => {
+            if (previousUrl) {
+              URL.revokeObjectURL(previousUrl);
+            }
+            return nextAudioUrl;
+          });
+          setHasRecording(true);
+        }
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+        setIsTimerRunning(false);
+      };
+
+      recorder.start();
+      setRecordingError("");
+      setHasRecording(false);
+      setAudioUrl(null);
+      setIsRecording(true);
+      setSecondsLeft(TIMER_DURATION);
+      setIsTimerRunning(true);
+    } catch {
+      setRecordingError("Microphone access denied. Check browser permissions.");
+      setIsRecording(false);
+      setIsTimerRunning(false);
+      setSecondsLeft(TIMER_DURATION);
+      stopAndReleaseMicrophone();
+    }
+  };
+
+  const stopRecording = () => {
+    if (!isRecording || !mediaRecorderRef.current) {
+      return;
+    }
+    if (mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
   };
 
   const timerLabel = `${Math.floor(secondsLeft / 60)}:${String(
@@ -236,11 +384,13 @@ export default function Home() {
         </button>
 
         {currentPrompt ? (
-          <div className="mx-auto mt-6 flex w-full max-w-md flex-col items-center gap-2">
+          <div className="mx-auto mt-6 flex w-full max-w-md flex-col items-center gap-3">
             <div className="flex items-center gap-3">
               <p className="text-4xl font-semibold tabular-nums text-sky-300 sm:text-5xl">
                 {timerLabel}
               </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
                 onClick={resetTimer}
@@ -248,7 +398,26 @@ export default function Home() {
               >
                 Reset
               </button>
+              <button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                  isRecording
+                    ? "bg-rose-500 text-white hover:bg-rose-400 focus-visible:ring-rose-300"
+                    : "bg-sky-500 text-slate-950 hover:bg-sky-400 focus-visible:ring-sky-300"
+                }`}
+              >
+                {isRecording ? (
+                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-200" />
+                ) : (
+                  <span aria-hidden="true">🎤</span>
+                )}
+                {isRecording ? "Stop" : "Record"}
+              </button>
             </div>
+            {recordingError ? (
+              <p className="text-xs font-medium text-rose-300">{recordingError}</p>
+            ) : null}
             {secondsLeft === 0 ? (
               <p className="animate-pulse text-sm font-medium tracking-wide text-amber-300">
                 Time&apos;s up!
@@ -274,6 +443,21 @@ export default function Home() {
             </p>
           )}
         </div>
+        {hasRecording && audioUrl ? (
+          <div className="mx-auto mt-5 flex w-full max-w-2xl flex-col items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <audio controls src={audioUrl} className="w-full max-w-xl" />
+            <button
+              type="button"
+              onClick={() => {
+                clearRecording();
+                setSecondsLeft(TIMER_DURATION);
+              }}
+              className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700"
+            >
+              Record again
+            </button>
+          </div>
+        ) : null}
       </section>
     </main>
   );
