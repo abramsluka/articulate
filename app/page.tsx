@@ -78,6 +78,35 @@ const CATEGORIES: FilterCategory[] = [
 
 const TIMER_DURATION = 60;
 
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type BrowserSpeechRecognitionEvent = {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
+};
+
+type BrowserSpeechRecognitionErrorEvent = {
+  error: string;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  }
+}
+
 const shuffle = <T,>(items: T[]) => {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -85,6 +114,22 @@ const shuffle = <T,>(items: T[]) => {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+};
+
+const appendTranscript = (existingText: string, nextText: string) => {
+  const existing = existingText.trim();
+  const next = nextText.trim();
+  if (!next) {
+    return existing;
+  }
+  return existing ? `${existing} ${next}` : next;
+};
+
+const getSpeechRecognitionConstructor = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 };
 
 export default function Home() {
@@ -100,12 +145,20 @@ export default function Home() {
   const [hasRecording, setHasRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingError, setRecordingError] = useState("");
+  const [finalTranscript, setFinalTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [isTranscriptionSupported, setIsTranscriptionSupported] = useState(true);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   useEffect(() => {
     document.title = "Off The Cuff";
+  }, []);
+
+  useEffect(() => {
+    setIsTranscriptionSupported(Boolean(getSpeechRecognitionConstructor()));
   }, []);
 
   useEffect(() => {
@@ -120,6 +173,10 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
       }
@@ -142,6 +199,12 @@ export default function Home() {
     setIsRecording(false);
     setHasRecording(false);
     setRecordingError("");
+    setFinalTranscript("");
+    setInterimTranscript("");
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
@@ -211,11 +274,26 @@ export default function Home() {
     mediaRecorderRef.current = null;
   };
 
+  const stopRecognition = () => {
+    if (!recognitionRef.current) {
+      return;
+    }
+    recognitionRef.current.onresult = null;
+    recognitionRef.current.onerror = null;
+    recognitionRef.current.onend = null;
+    recognitionRef.current.stop();
+    recognitionRef.current = null;
+    setInterimTranscript("");
+  };
+
   const clearRecording = () => {
+    stopRecognition();
     stopAndReleaseMicrophone();
     setIsRecording(false);
     setHasRecording(false);
     setRecordingError("");
+    setFinalTranscript("");
+    setInterimTranscript("");
     audioChunksRef.current = [];
     setAudioUrl((previousUrl) => {
       if (previousUrl) {
@@ -261,6 +339,7 @@ export default function Home() {
   };
 
   const resetTimer = () => {
+    stopRecognition();
     stopAndReleaseMicrophone();
     setIsRecording(false);
     setIsTimerRunning(false);
@@ -288,6 +367,7 @@ export default function Home() {
       };
 
       recorder.onstop = () => {
+        stopRecognition();
         const recording = new Blob(audioChunksRef.current, {
           type: recorder.mimeType || "audio/webm",
         });
@@ -312,6 +392,39 @@ export default function Home() {
       };
 
       recorder.start();
+      const SpeechRecognition = getSpeechRecognitionConstructor();
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+        recognition.onresult = (event) => {
+          let nextFinal = "";
+          let nextInterim = "";
+          for (let i = event.resultIndex; i < event.results.length; i += 1) {
+            const result = event.results[i];
+            const transcript = result[0]?.transcript ?? "";
+            if (result.isFinal) {
+              nextFinal = appendTranscript(nextFinal, transcript);
+            } else {
+              nextInterim = appendTranscript(nextInterim, transcript);
+            }
+          }
+          if (nextFinal) {
+            setFinalTranscript((previous) => appendTranscript(previous, nextFinal));
+          }
+          setInterimTranscript(nextInterim);
+        };
+        recognition.onerror = () => {
+          setInterimTranscript("");
+        };
+        recognition.onend = () => {
+          recognitionRef.current = null;
+          setInterimTranscript("");
+        };
+        recognition.start();
+      }
       setRecordingError("");
       setHasRecording(false);
       setAudioUrl(null);
@@ -331,6 +444,7 @@ export default function Home() {
     if (!isRecording || !mediaRecorderRef.current) {
       return;
     }
+    stopRecognition();
     if (mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
@@ -443,9 +557,50 @@ export default function Home() {
             </p>
           )}
         </div>
+        {currentPrompt &&
+        (finalTranscript || interimTranscript || !isTranscriptionSupported) &&
+        !hasRecording ? (
+          <div className="mx-auto mt-5 w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-left">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Live transcript
+            </p>
+            {!isTranscriptionSupported ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Transcription not supported in this browser.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm leading-relaxed text-slate-200">
+                {finalTranscript ? (
+                  <span>{finalTranscript} </span>
+                ) : null}
+                {interimTranscript ? (
+                  <span className="text-slate-400">{interimTranscript}</span>
+                ) : finalTranscript ? null : (
+                  <span className="text-slate-500">Start speaking to see text here.</span>
+                )}
+              </p>
+            )}
+          </div>
+        ) : null}
         {hasRecording && audioUrl ? (
-          <div className="mx-auto mt-5 flex w-full max-w-2xl flex-col items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <audio controls src={audioUrl} className="w-full max-w-xl" />
+          <div className="mx-auto mt-5 flex w-full max-w-2xl flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-left">
+            <audio controls src={audioUrl} className="w-full" />
+            {(finalTranscript || !isTranscriptionSupported) && (
+              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Transcript
+                </p>
+                {!isTranscriptionSupported ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Transcription not supported in this browser.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm leading-relaxed text-slate-200">
+                    {finalTranscript}
+                  </p>
+                )}
+              </div>
+            )}
             <button
               type="button"
               onClick={() => {
