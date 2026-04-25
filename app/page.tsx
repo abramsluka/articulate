@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 type PromptCategory = "Personal" | "Opinion" | "Creative" | "Abstract" | "Silly";
 type FilterCategory = "All" | PromptCategory;
 type Prompt = { text: string; category: PromptCategory };
+type PrepMode = "3s" | "5s" | "10s" | "Manual";
 
 const PROMPTS = [
   { text: "Describe your ideal Saturday from morning to night.", category: "Personal" },
@@ -77,6 +78,7 @@ const CATEGORIES: FilterCategory[] = [
 ];
 
 const TIMER_DURATION = 60;
+const PREP_OPTIONS: PrepMode[] = ["3s", "5s", "10s", "Manual"];
 
 type BrowserSpeechRecognition = {
   continuous: boolean;
@@ -136,22 +138,31 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState<FilterCategory>("All");
   const [currentPrompt, setCurrentPrompt] = useState<Prompt | null>(null);
   const [isPromptVisible, setIsPromptVisible] = useState(true);
+  const [prepMode, setPrepMode] = useState<PrepMode>("3s");
+  const [prepCountdown, setPrepCountdown] = useState<number | null>(null);
+  const [canStartCurrentPrompt, setCanStartCurrentPrompt] = useState(false);
   const [unusedPrompts, setUnusedPrompts] = useState<Prompt[]>(() =>
     shuffle(PROMPTS)
   );
   const [secondsLeft, setSecondsLeft] = useState(TIMER_DURATION);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [hasRecording, setHasRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingError, setRecordingError] = useState("");
+  const [reviewElapsedSeconds, setReviewElapsedSeconds] = useState<number | null>(null);
   const [finalTranscript, setFinalTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isTranscriptionSupported, setIsTranscriptionSupported] = useState(true);
+  const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const discardRecordingOnStopRef = useRef(false);
+  const hasMountedPrepModeRef = useRef(false);
+  const secondsLeftRef = useRef(TIMER_DURATION);
 
   useEffect(() => {
     document.title = "Off The Cuff";
@@ -194,10 +205,14 @@ export default function Home() {
 
     setUnusedPrompts(shuffle(filteredPrompts));
     setCurrentPrompt(null);
+    setPrepCountdown(null);
+    setCanStartCurrentPrompt(false);
     setIsTimerRunning(false);
     setSecondsLeft(TIMER_DURATION);
     setIsRecording(false);
+    setIsPaused(false);
     setHasRecording(false);
+    setReviewElapsedSeconds(null);
     setRecordingError("");
     setFinalTranscript("");
     setInterimTranscript("");
@@ -218,6 +233,19 @@ export default function Home() {
   }, [activeCategory]);
 
   useEffect(() => {
+    if (!hasMountedPrepModeRef.current) {
+      hasMountedPrepModeRef.current = true;
+      return;
+    }
+
+    setPrepCountdown(null);
+    clearRecording();
+    setIsTimerRunning(false);
+    setSecondsLeft(TIMER_DURATION);
+    setCanStartCurrentPrompt(false);
+  }, [prepMode]);
+
+  useEffect(() => {
     if (!currentPrompt) {
       return;
     }
@@ -231,6 +259,31 @@ export default function Home() {
       cancelAnimationFrame(animationFrame);
     };
   }, [currentPrompt]);
+
+  useEffect(() => {
+    secondsLeftRef.current = secondsLeft;
+  }, [secondsLeft]);
+
+  useEffect(() => {
+    if (prepCountdown === null) {
+      return;
+    }
+    if (prepCountdown <= 0) {
+      setPrepCountdown(null);
+      void startRecording();
+      return;
+    }
+
+    const countdownTimer = setTimeout(() => {
+      setPrepCountdown((previousValue) =>
+        previousValue === null ? null : previousValue - 1
+      );
+    }, 1000);
+
+    return () => {
+      clearTimeout(countdownTimer);
+    };
+  }, [prepCountdown]);
 
   useEffect(() => {
     if (!isTimerRunning) {
@@ -287,10 +340,13 @@ export default function Home() {
   };
 
   const clearRecording = () => {
+    discardRecordingOnStopRef.current = true;
     stopRecognition();
     stopAndReleaseMicrophone();
     setIsRecording(false);
+    setIsPaused(false);
     setHasRecording(false);
+    setReviewElapsedSeconds(null);
     setRecordingError("");
     setFinalTranscript("");
     setInterimTranscript("");
@@ -333,17 +389,125 @@ export default function Home() {
 
     setCurrentPrompt(nextPrompt);
     setUnusedPrompts(remainingPrompts);
-    setSecondsLeft(TIMER_DURATION);
-    setIsTimerRunning(false);
-    clearRecording();
+    setCanStartCurrentPrompt(false);
+    return nextPrompt;
   };
 
-  const resetTimer = () => {
-    stopRecognition();
-    stopAndReleaseMicrophone();
-    setIsRecording(false);
+  const resetDuringRecording = () => {
+    setPrepCountdown(null);
+    clearRecording();
     setIsTimerRunning(false);
     setSecondsLeft(TIMER_DURATION);
+    setCanStartCurrentPrompt(!isManualMode && Boolean(currentPrompt));
+    setReviewElapsedSeconds(null);
+  };
+
+  const getPrepSeconds = () => {
+    if (prepMode === "3s") return 3;
+    if (prepMode === "5s") return 5;
+    if (prepMode === "10s") return 10;
+    return null;
+  };
+
+  const ensureMicPermission = async () => {
+    if (hasMicPermission) {
+      return true;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setHasMicPermission(true);
+      return true;
+    } catch {
+      setHasMicPermission(false);
+      setRecordingError("Microphone permission needed to start this mode.");
+      return false;
+    }
+  };
+
+  const preparePromptForMode = async () => {
+    const prepSeconds = getPrepSeconds();
+    if (prepSeconds !== null) {
+      const canRecord = await ensureMicPermission();
+      if (!canRecord) {
+        return;
+      }
+    }
+
+    const nextPrompt = pickPrompt();
+    if (!nextPrompt) {
+      return;
+    }
+
+    setPrepCountdown(null);
+    clearRecording();
+    setSecondsLeft(TIMER_DURATION);
+    setIsTimerRunning(false);
+    setRecordingError("");
+    setCanStartCurrentPrompt(false);
+
+    if (prepSeconds !== null) {
+      setPrepCountdown(prepSeconds);
+    }
+  };
+
+  const startCurrentPromptForMode = async () => {
+    if (!currentPrompt) {
+      return;
+    }
+
+    const prepSeconds = getPrepSeconds();
+    if (prepSeconds === null) {
+      await startRecording();
+      return;
+    }
+
+    const canRecord = await ensureMicPermission();
+    if (!canRecord) {
+      return;
+    }
+
+    setRecordingError("");
+    setPrepCountdown(prepSeconds);
+    setCanStartCurrentPrompt(false);
+  };
+
+  const startRecognition = () => {
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (!SpeechRecognition || recognitionRef.current) {
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      let nextFinal = "";
+      let nextInterim = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const transcript = result[0]?.transcript ?? "";
+        if (result.isFinal) {
+          nextFinal = appendTranscript(nextFinal, transcript);
+        } else {
+          nextInterim = appendTranscript(nextInterim, transcript);
+        }
+      }
+      if (nextFinal) {
+        setFinalTranscript((previous) => appendTranscript(previous, nextFinal));
+      }
+      setInterimTranscript(nextInterim);
+    };
+    recognition.onerror = () => {
+      setInterimTranscript("");
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setInterimTranscript("");
+    };
+    recognition.start();
   };
 
   const startRecording = async () => {
@@ -368,11 +532,18 @@ export default function Home() {
 
       recorder.onstop = () => {
         stopRecognition();
+        const shouldDiscardRecording = discardRecordingOnStopRef.current;
+        discardRecordingOnStopRef.current = false;
         const recording = new Blob(audioChunksRef.current, {
           type: recorder.mimeType || "audio/webm",
         });
         audioChunksRef.current = [];
-        if (recording.size > 0) {
+        if (!shouldDiscardRecording && recording.size > 0) {
+          const elapsedSeconds = Math.max(
+            0,
+            Math.min(TIMER_DURATION, TIMER_DURATION - secondsLeftRef.current)
+          );
+          setReviewElapsedSeconds(elapsedSeconds);
           const nextAudioUrl = URL.createObjectURL(recording);
           setAudioUrl((previousUrl) => {
             if (previousUrl) {
@@ -388,56 +559,54 @@ export default function Home() {
         }
         mediaRecorderRef.current = null;
         setIsRecording(false);
+        setIsPaused(false);
         setIsTimerRunning(false);
       };
 
+      discardRecordingOnStopRef.current = false;
       recorder.start();
-      const SpeechRecognition = getSpeechRecognitionConstructor();
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognitionRef.current = recognition;
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = "en-US";
-        recognition.onresult = (event) => {
-          let nextFinal = "";
-          let nextInterim = "";
-          for (let i = event.resultIndex; i < event.results.length; i += 1) {
-            const result = event.results[i];
-            const transcript = result[0]?.transcript ?? "";
-            if (result.isFinal) {
-              nextFinal = appendTranscript(nextFinal, transcript);
-            } else {
-              nextInterim = appendTranscript(nextInterim, transcript);
-            }
-          }
-          if (nextFinal) {
-            setFinalTranscript((previous) => appendTranscript(previous, nextFinal));
-          }
-          setInterimTranscript(nextInterim);
-        };
-        recognition.onerror = () => {
-          setInterimTranscript("");
-        };
-        recognition.onend = () => {
-          recognitionRef.current = null;
-          setInterimTranscript("");
-        };
-        recognition.start();
-      }
+      setFinalTranscript("");
+      setInterimTranscript("");
+      startRecognition();
       setRecordingError("");
       setHasRecording(false);
+      setReviewElapsedSeconds(null);
       setAudioUrl(null);
       setIsRecording(true);
+      setIsPaused(false);
       setSecondsLeft(TIMER_DURATION);
       setIsTimerRunning(true);
     } catch {
       setRecordingError("Microphone access denied. Check browser permissions.");
+      setHasMicPermission(false);
       setIsRecording(false);
+      setIsPaused(false);
       setIsTimerRunning(false);
       setSecondsLeft(TIMER_DURATION);
       stopAndReleaseMicrophone();
     }
+  };
+
+  const pauseRecording = () => {
+    if (!isRecording || !mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") {
+      return;
+    }
+    mediaRecorderRef.current.pause();
+    stopRecognition();
+    setIsPaused(true);
+    setIsTimerRunning(false);
+  };
+
+  const resumeRecording = () => {
+    if (!isRecording || !isPaused || !mediaRecorderRef.current) {
+      return;
+    }
+    if (mediaRecorderRef.current.state === "paused") {
+      mediaRecorderRef.current.resume();
+    }
+    startRecognition();
+    setIsPaused(false);
+    setIsTimerRunning(true);
   };
 
   const stopRecording = () => {
@@ -450,9 +619,35 @@ export default function Home() {
     }
   };
 
-  const timerLabel = `${Math.floor(secondsLeft / 60)}:${String(
+  const recordingTimerLabel = `${Math.floor(secondsLeft / 60)}:${String(
     secondsLeft % 60
   ).padStart(2, "0")}`;
+  const frozenReviewTimerLabel =
+    reviewElapsedSeconds === null
+      ? "0:00"
+      : `${Math.floor(reviewElapsedSeconds / 60)}:${String(
+          reviewElapsedSeconds % 60
+        ).padStart(2, "0")}`;
+  const prepLabel = prepCountdown !== null ? String(Math.max(0, prepCountdown)) : null;
+  const isReviewState = hasRecording && Boolean(audioUrl);
+  const isManualMode = prepMode === "Manual";
+  const isPreparing = prepCountdown !== null;
+  const showCountdownLayer = Boolean(isPreparing && prepLabel);
+  const showTimerLayer = Boolean(isRecording || isReviewState);
+  const showManualRecordLayer = Boolean(
+    currentPrompt && !isRecording && !isReviewState && isManualMode && !isPreparing
+  );
+  const showStartLayer = Boolean(
+    currentPrompt &&
+      !isRecording &&
+      !isReviewState &&
+      !isManualMode &&
+      canStartCurrentPrompt &&
+      !isPreparing
+  );
+  const showPrepResetLayer = Boolean(isPreparing);
+  const showRecordingControlsLayer = Boolean(isRecording);
+  const showReviewControlsLayer = Boolean(isReviewState);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-12 text-slate-100">
@@ -464,83 +659,66 @@ export default function Home() {
           Practice thinking and speaking on your feet. Click the button, then
           speak for 60 seconds about whatever appears.
         </p>
-
-        <div className="mx-auto mt-8 flex w-full max-w-2xl flex-wrap items-center justify-center gap-2">
-          {CATEGORIES.map((category) => {
-            const isActive = category === activeCategory;
+        <div className="mx-auto mt-6 flex h-12 w-full max-w-2xl items-center justify-center gap-2 text-sm">
+          {PREP_OPTIONS.map((modeOption) => {
+            const isActive = modeOption === prepMode;
             return (
               <button
-                key={category}
+                key={modeOption}
                 type="button"
-                onClick={() => {
-                  if (!isActive) {
-                    setActiveCategory(category);
-                  }
-                }}
-                className={`rounded-full px-4 py-2 text-sm transition ${
+                onClick={() => setPrepMode(modeOption)}
+                className={`rounded-full px-3 py-1.5 transition-all duration-150 ${
                   isActive
-                    ? "bg-sky-400 font-semibold text-slate-950"
-                    : "bg-slate-900 font-medium text-slate-300 hover:bg-slate-800"
+                    ? "bg-slate-700 text-slate-100"
+                    : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
                 }`}
               >
-                {category}
+                {modeOption}
               </button>
             );
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={pickPrompt}
-          className="mt-10 rounded-2xl bg-sky-500 px-10 py-5 text-lg font-semibold text-slate-950 shadow-lg shadow-sky-900/30 transition hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-        >
-          Give me a prompt
-        </button>
-
-        {currentPrompt ? (
-          <div className="mx-auto mt-6 flex w-full max-w-md flex-col items-center gap-3">
-            <div className="flex items-center gap-3">
-              <p className="text-4xl font-semibold tabular-nums text-sky-300 sm:text-5xl">
-                {timerLabel}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={resetTimer}
-                className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-400 hover:bg-slate-800"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={isRecording ? stopRecording : startRecording}
-                className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
-                  isRecording
-                    ? "bg-rose-500 text-white hover:bg-rose-400 focus-visible:ring-rose-300"
-                    : "bg-sky-500 text-slate-950 hover:bg-sky-400 focus-visible:ring-sky-300"
-                }`}
-              >
-                {isRecording ? (
-                  <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-200" />
-                ) : (
-                  <span aria-hidden="true">🎤</span>
-                )}
-                {isRecording ? "Stop" : "Record"}
-              </button>
-            </div>
-            {recordingError ? (
-              <p className="text-xs font-medium text-rose-300">{recordingError}</p>
-            ) : null}
-            {secondsLeft === 0 ? (
-              <p className="animate-pulse text-sm font-medium tracking-wide text-amber-300">
-                Time&apos;s up!
-              </p>
-            ) : null}
+        <div className="mx-auto mt-8 flex h-12 w-full max-w-2xl items-center justify-center overflow-hidden">
+          <div className="flex max-w-full flex-nowrap items-center justify-center gap-2 overflow-x-auto px-1 py-1">
+            {CATEGORIES.map((category) => {
+              const isActive = category === activeCategory;
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => {
+                    if (!isActive) {
+                      setActiveCategory(category);
+                    }
+                  }}
+                  className={`shrink-0 rounded-full px-4 py-2 text-sm transition-all duration-150 ${
+                    isActive
+                      ? "bg-sky-400 font-semibold text-slate-950"
+                      : "bg-slate-900 font-medium text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {category}
+                </button>
+              );
+            })}
           </div>
-        ) : null}
+        </div>
 
-        <div className="mt-10 min-h-40 rounded-2xl border border-slate-800 bg-slate-900/70 p-8 backdrop-blur-sm">
+        <div className="mx-auto mt-10 flex h-16 w-full max-w-3xl items-center justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              void preparePromptForMode();
+            }}
+            className="rounded-2xl bg-sky-500 px-10 py-3 text-lg font-semibold text-slate-950 shadow-lg shadow-sky-900/30 transition-all duration-150 hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+          >
+            Give me a prompt
+          </button>
+        </div>
+
+        {/* Prompt card — single bordered div; text + padding only (timer/buttons/review are siblings below) */}
+        <div className="mt-10 flex w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/70 p-5 backdrop-blur-sm">
           {currentPrompt ? (
             <p
               className={`text-2xl font-medium leading-relaxed text-slate-100 transition-all duration-300 ease-out ${
@@ -557,36 +735,197 @@ export default function Home() {
             </p>
           )}
         </div>
-        {currentPrompt &&
-        (finalTranscript || interimTranscript || !isTranscriptionSupported) &&
-        !hasRecording ? (
-          <div className="mx-auto mt-5 w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-left">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Live transcript
-            </p>
-            {!isTranscriptionSupported ? (
-              <p className="mt-2 text-xs text-slate-500">
-                Transcription not supported in this browser.
+
+        {/* Timer / countdown slot — sibling of prompt card, not nested inside it */}
+        <div className="mx-auto mt-14 flex h-14 w-full max-w-md flex-col">
+          <div className="relative min-h-0 flex-1 w-full">
+            <div
+              className={`absolute inset-0 flex flex-col items-center justify-end pb-1 transition-all duration-150 ${
+                showCountdownLayer
+                  ? "z-10 opacity-100"
+                  : "pointer-events-none z-0 opacity-0"
+              }`}
+              aria-hidden={!showCountdownLayer}
+            >
+              {prepLabel ? (
+                <p
+                  key={prepLabel}
+                  className="animate-pulse text-4xl font-semibold tabular-nums text-sky-300 transition-all duration-150 sm:text-5xl"
+                >
+                  {prepLabel}
+                </p>
+              ) : null}
+            </div>
+            <div
+              className={`absolute inset-0 flex flex-col items-center justify-end gap-1 pb-1 transition-all duration-150 ${
+                showTimerLayer
+                  ? "z-10 opacity-100"
+                  : "pointer-events-none z-0 opacity-0"
+              }`}
+              aria-hidden={!showTimerLayer}
+            >
+              <p className="text-4xl font-semibold tabular-nums text-sky-300 transition-all duration-150 sm:text-5xl">
+                {isReviewState ? frozenReviewTimerLabel : recordingTimerLabel}
               </p>
-            ) : (
-              <p className="mt-2 text-sm leading-relaxed text-slate-200">
-                {finalTranscript ? (
-                  <span>{finalTranscript} </span>
-                ) : null}
-                {interimTranscript ? (
-                  <span className="text-slate-400">{interimTranscript}</span>
-                ) : finalTranscript ? null : (
-                  <span className="text-slate-500">Start speaking to see text here.</span>
-                )}
+              <p
+                className={`min-h-5 text-sm font-medium tabular-nums transition-all duration-150 ${
+                  secondsLeft === 0 && isRecording
+                    ? "animate-pulse text-amber-300"
+                    : "text-transparent"
+                }`}
+              >
+                {secondsLeft === 0 && isRecording ? "Time\u2019s up!" : "\u00a0"}
               </p>
-            )}
+            </div>
+            <div
+              className={`absolute inset-0 flex flex-col items-center justify-end gap-1 pb-1 transition-all duration-150 ${
+                !showCountdownLayer && !showTimerLayer
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0"
+              }`}
+              aria-hidden={showCountdownLayer || showTimerLayer}
+            >
+              <span className="text-4xl font-semibold tabular-nums text-transparent sm:text-5xl" aria-hidden>
+                0:00
+              </span>
+              <span className="min-h-5 text-sm text-transparent" aria-hidden>
+                &nbsp;
+              </span>
+            </div>
           </div>
-        ) : null}
+          <div className="flex h-4 w-full shrink-0 items-center justify-center px-2">
+            <p
+              className={`line-clamp-2 max-w-full text-center text-xs font-medium transition-all duration-150 ${
+                recordingError ? "text-rose-300" : "text-transparent"
+              }`}
+            >
+              {recordingError || "\u00a0"}
+            </p>
+          </div>
+        </div>
+
+        {/* Button row */}
+        <div className="relative mx-auto mt-1 h-8 w-full max-w-md overflow-hidden">
+          <div
+            className={`absolute inset-0 flex flex-nowrap items-start justify-center gap-2 overflow-x-auto overflow-y-hidden px-1 pt-0 transition-all duration-150 ${
+              showManualRecordLayer
+                ? "z-10 opacity-100"
+                : "pointer-events-none z-0 opacity-0"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={startRecording}
+              className="flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-all duration-150 hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            >
+              <span aria-hidden="true">🎤</span>
+              Record
+            </button>
+          </div>
+          <div
+            className={`absolute inset-0 flex flex-nowrap items-start justify-center gap-2 overflow-x-auto overflow-y-hidden px-1 pt-0 transition-all duration-150 ${
+              showStartLayer ? "z-10 opacity-100" : "pointer-events-none z-0 opacity-0"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                void startCurrentPromptForMode();
+              }}
+              className="flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-all duration-150 hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            >
+              Start
+            </button>
+          </div>
+          <div
+            className={`absolute inset-0 flex flex-nowrap items-start justify-center gap-2 overflow-x-auto overflow-y-hidden px-1 pt-0 transition-all duration-150 ${
+              showPrepResetLayer ? "z-10 opacity-100" : "pointer-events-none z-0 opacity-0"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={resetDuringRecording}
+              className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition-all duration-150 hover:border-slate-400 hover:bg-slate-800"
+            >
+              Reset
+            </button>
+          </div>
+          <div
+            className={`absolute inset-0 flex flex-nowrap items-start justify-center gap-2 overflow-x-auto overflow-y-hidden px-1 pt-0 transition-all duration-150 ${
+              showRecordingControlsLayer ? "z-10 opacity-100" : "pointer-events-none z-0 opacity-0"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={isPaused ? resumeRecording : pauseRecording}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                isPaused
+                  ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300"
+                  : "bg-amber-600 text-slate-100 hover:bg-amber-500 focus-visible:ring-amber-400"
+              }`}
+            >
+              {isPaused ? "Resume" : "Pause"}
+            </button>
+            <button
+              type="button"
+              onClick={stopRecording}
+              className="flex items-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-150 hover:bg-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            >
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-200" />
+              Stop
+            </button>
+            <button
+              type="button"
+              onClick={resetDuringRecording}
+              className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition-all duration-150 hover:border-slate-400 hover:bg-slate-800"
+            >
+              Reset
+            </button>
+          </div>
+          <div
+            className={`absolute inset-0 flex flex-nowrap items-start justify-center gap-2 overflow-x-auto overflow-y-hidden px-1 pt-0 transition-all duration-150 ${
+              showReviewControlsLayer ? "z-10 opacity-100" : "pointer-events-none z-0 opacity-0"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  clearRecording();
+                  setSecondsLeft(TIMER_DURATION);
+                  setIsTimerRunning(false);
+                  setPrepCountdown(null);
+                  setReviewElapsedSeconds(null);
+
+                  if (isManualMode) {
+                    await startRecording();
+                    return;
+                  }
+
+                  const prepSeconds = getPrepSeconds();
+                  if (prepSeconds === null) {
+                    return;
+                  }
+
+                  const canRecord = await ensureMicPermission();
+                  if (!canRecord) {
+                    return;
+                  }
+                  setRecordingError("");
+                  setPrepCountdown(prepSeconds);
+                })();
+              }}
+              className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700"
+            >
+              Record again
+            </button>
+          </div>
+        </div>
         {hasRecording && audioUrl ? (
-          <div className="mx-auto mt-5 flex w-full max-w-2xl flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-left">
+          <div className="mx-auto mt-2 flex w-full max-w-2xl flex-col gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition-all duration-150">
             <audio controls src={audioUrl} className="w-full" />
-            {(finalTranscript || !isTranscriptionSupported) && (
-              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+            {(finalTranscript || interimTranscript || !isTranscriptionSupported) && (
+              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Transcript
                 </p>
@@ -596,21 +935,14 @@ export default function Home() {
                   </p>
                 ) : (
                   <p className="mt-2 text-sm leading-relaxed text-slate-200">
-                    {finalTranscript}
+                    {finalTranscript ? <span>{finalTranscript} </span> : null}
+                    {interimTranscript ? (
+                      <span className="text-slate-400">{interimTranscript}</span>
+                    ) : null}
                   </p>
                 )}
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                clearRecording();
-                setSecondsLeft(TIMER_DURATION);
-              }}
-              className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700"
-            >
-              Record again
-            </button>
           </div>
         ) : null}
       </section>
