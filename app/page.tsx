@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type PromptCategory =
   | "Personal"
@@ -88,6 +88,9 @@ const CATEGORIES: FilterCategory[] = [
 
 const TIMER_DURATION = 60;
 const PREP_OPTIONS: PrepMode[] = ["3s", "5s", "10s", "Manual"];
+const FILLER_PATTERN =
+  /\b(?:you\s+know|i\s+mean|kind\s+of|sort\s+of|so\s+um|and\s+like|actually|basically|literally|honestly|right|okay|well|like|um|uh|er|ah|so)\b/gi;
+const WORD_PATTERN = /\b[\w']+\b/g;
 
 type BrowserSpeechRecognition = {
   continuous: boolean;
@@ -657,6 +660,56 @@ export default function Home() {
   const showPrepResetLayer = Boolean(isPreparing);
   const showRecordingControlsLayer = Boolean(isRecording);
   const showReviewControlsLayer = Boolean(isReviewState);
+  const transcriptAnalysis = useMemo(() => {
+    const wordMatches = finalTranscript.match(WORD_PATTERN) ?? [];
+    const parts: { text: string; isFiller: boolean }[] = [];
+    const matcher = new RegExp(FILLER_PATTERN.source, FILLER_PATTERN.flags);
+    let fillerCount = 0;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = matcher.exec(finalTranscript)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({
+          text: finalTranscript.slice(lastIndex, match.index),
+          isFiller: false,
+        });
+      }
+      parts.push({ text: match[0], isFiller: true });
+      fillerCount += 1;
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < finalTranscript.length) {
+      parts.push({ text: finalTranscript.slice(lastIndex), isFiller: false });
+    }
+
+    return {
+      fillerCount,
+      parts,
+      totalWords: wordMatches.length,
+    };
+  }, [finalTranscript]);
+  const hasTranscriptWords = transcriptAnalysis.totalWords > 0;
+  const fillerPercent = hasTranscriptWords
+    ? `${((transcriptAnalysis.fillerCount / transcriptAnalysis.totalWords) * 100).toFixed(1)}%`
+    : "—";
+  const paceWordsPerMinute =
+    hasTranscriptWords && reviewElapsedSeconds && reviewElapsedSeconds > 0
+      ? Math.round(transcriptAnalysis.totalWords / (reviewElapsedSeconds / 60)).toString()
+      : "—";
+  const speechStats = [
+    {
+      label: "Words",
+      value: hasTranscriptWords ? transcriptAnalysis.totalWords.toString() : "—",
+    },
+    {
+      label: "Fillers",
+      value: hasTranscriptWords ? transcriptAnalysis.fillerCount.toString() : "—",
+    },
+    { label: "Filler %", value: fillerPercent },
+    { label: "Pace WPM", value: paceWordsPerMinute },
+  ];
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-6 text-slate-100 md:px-6 md:py-8 lg:px-8 lg:py-9">
@@ -933,25 +986,60 @@ export default function Home() {
         {hasRecording && audioUrl ? (
           <div className="mx-auto mt-2 flex w-full max-w-md flex-col gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition-all duration-150 md:mt-3 md:max-w-xl md:gap-3 md:p-4 lg:mt-3 lg:max-w-2xl">
             <audio controls src={audioUrl} className="w-full" />
-            {(finalTranscript || interimTranscript || !isTranscriptionSupported) && (
-              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Transcript
-                </p>
-                {!isTranscriptionSupported ? (
+            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+              {!isTranscriptionSupported ? (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Transcript
+                  </p>
                   <p className="mt-2 text-xs text-slate-500 md:text-sm lg:text-base">
                     Transcription not supported in this browser.
                   </p>
-                ) : (
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {speechStats.map((stat) => (
+                      <div
+                        key={stat.label}
+                        className="rounded-lg bg-slate-800/50 p-3 text-center"
+                      >
+                        <p className="text-lg font-semibold tabular-nums text-slate-100 md:text-xl">
+                          {stat.value}
+                        </p>
+                        <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400 md:text-xs">
+                          {stat.label}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Transcript
+                  </p>
                   <p className="mt-2 text-sm leading-relaxed text-slate-200 md:text-base lg:text-lg">
-                    {finalTranscript ? <span>{finalTranscript} </span> : null}
+                    {finalTranscript ? (
+                      transcriptAnalysis.parts.map((part, index) =>
+                        part.isFiller ? (
+                          <span
+                            key={`${part.text}-${index}`}
+                            className="rounded bg-amber-500/20 px-1 text-amber-200"
+                          >
+                            {part.text}
+                          </span>
+                        ) : (
+                          <span key={`${part.text}-${index}`}>{part.text}</span>
+                        )
+                      )
+                    ) : (
+                      <span className="text-slate-500">No transcript captured.</span>
+                    )}
                     {interimTranscript ? (
                       <span className="text-slate-400">{interimTranscript}</span>
                     ) : null}
                   </p>
-                )}
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </div>
         ) : null}
       </section>
