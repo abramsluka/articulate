@@ -676,10 +676,10 @@ export default function Home() {
                 key={modeOption}
                 type="button"
                 onClick={() => setPrepMode(modeOption)}
-                className={`rounded-full px-3 py-1.5 transition-all duration-150 ${
+                className={`cursor-pointer rounded-full px-3 py-1.5 transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                   isActive
-                    ? "bg-slate-700 text-slate-100"
-                    : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    ? "bg-sky-500 font-semibold text-slate-950 shadow-md shadow-sky-500/20 hover:scale-[1.02] hover:bg-sky-400 focus-visible:ring-sky-300"
+                    : "bg-slate-800 text-slate-400 hover:scale-[1.02] hover:bg-slate-700 hover:text-slate-200 hover:shadow-md hover:shadow-slate-950/20 focus-visible:ring-slate-500"
                 }`}
               >
                 {modeOption}
@@ -701,10 +701,10 @@ export default function Home() {
                       setActiveCategory(category);
                     }
                   }}
-                  className={`shrink-0 rounded-full px-4 py-2 text-sm transition-all duration-150 ${
+                  className={`shrink-0 cursor-pointer rounded-full px-4 py-2 text-sm transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                     isActive
-                      ? "bg-sky-400 font-semibold text-slate-950"
-                      : "bg-slate-900 font-medium text-slate-300 hover:bg-slate-800"
+                      ? "bg-sky-500 font-semibold text-slate-950 shadow-md shadow-sky-500/20 hover:scale-[1.02] hover:bg-sky-400 focus-visible:ring-sky-300"
+                      : "bg-slate-800 font-medium text-slate-400 hover:scale-[1.02] hover:bg-slate-700 hover:text-slate-200 hover:shadow-md hover:shadow-slate-950/20 focus-visible:ring-slate-500"
                   }`}
                 >
                   {category}
@@ -720,7 +720,7 @@ export default function Home() {
             onClick={() => {
               void preparePromptForMode();
             }}
-            className="rounded-2xl bg-sky-500 px-10 py-3 text-lg font-semibold text-slate-950 shadow-lg shadow-sky-900/30 transition-all duration-150 hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            className="cursor-pointer rounded-2xl bg-sky-500 px-10 py-3 text-lg font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
           >
             Give me a prompt
           </button>
@@ -825,7 +825,7 @@ export default function Home() {
             <button
               type="button"
               onClick={startRecording}
-              className="flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-all duration-150 hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <span aria-hidden="true">🎤</span>
               Record
@@ -841,7 +841,7 @@ export default function Home() {
               onClick={() => {
                 void startCurrentPromptForMode();
               }}
-              className="flex items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-all duration-150 hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Start
             </button>
@@ -854,7 +854,7 @@ export default function Home() {
             <button
               type="button"
               onClick={resetDuringRecording}
-              className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition-all duration-150 hover:border-slate-400 hover:bg-slate-800"
+              className="cursor-pointer rounded-lg border border-slate-600 bg-slate-950/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-300 transition-all duration-150 ease-out hover:scale-[1.02] hover:border-slate-400 hover:bg-slate-800 hover:text-slate-100 hover:shadow-md hover:shadow-slate-950/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Reset
             </button>
@@ -867,10 +867,10 @@ export default function Home() {
             <button
               type="button"
               onClick={isPaused ? resumeRecording : pauseRecording}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+              className={`cursor-pointer rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-all duration-150 ease-out hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                 isPaused
-                  ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300"
-                  : "bg-amber-600 text-slate-100 hover:bg-amber-500 focus-visible:ring-amber-400"
+                  ? "bg-amber-500 text-slate-950 shadow-amber-500/25 hover:bg-amber-400 hover:shadow-amber-500/35 focus-visible:ring-amber-300"
+                  : "bg-amber-600 text-slate-100 shadow-amber-600/25 hover:bg-amber-500 hover:shadow-amber-500/35 focus-visible:ring-amber-400"
               }`}
             >
               {isPaused ? "Resume" : "Pause"}
@@ -878,15 +878,15 @@ export default function Home() {
             <button
               type="button"
               onClick={stopRecording}
-              className="flex items-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-150 hover:bg-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-rose-500/25 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-rose-400 hover:shadow-lg hover:shadow-rose-500/35 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
-              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-200" />
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-200 shadow-sm shadow-red-200/70 ring-2 ring-red-200/30" />
               Stop
             </button>
             <button
               type="button"
               onClick={resetDuringRecording}
-              className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition-all duration-150 hover:border-slate-400 hover:bg-slate-800"
+              className="cursor-pointer rounded-lg border border-slate-600 bg-slate-950/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-300 transition-all duration-150 ease-out hover:scale-[1.02] hover:border-slate-400 hover:bg-slate-800 hover:text-slate-100 hover:shadow-md hover:shadow-slate-950/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Reset
             </button>
@@ -924,7 +924,7 @@ export default function Home() {
                   setPrepCountdown(prepSeconds);
                 })();
               }}
-              className="rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700"
+              className="cursor-pointer rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 shadow-md shadow-slate-950/25 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-slate-700 hover:shadow-lg hover:shadow-slate-950/30 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Record again
             </button>
