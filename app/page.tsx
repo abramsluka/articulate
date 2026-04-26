@@ -659,16 +659,16 @@ export default function Home() {
   const showReviewControlsLayer = Boolean(isReviewState);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-12 text-slate-100">
-      <section className="w-full max-w-3xl text-center">
-        <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-6 text-slate-100 md:px-6 md:py-8 lg:px-8 lg:py-9">
+      <section className="w-full max-w-md text-center md:max-w-xl lg:max-w-2xl xl:max-w-2xl">
+        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl lg:text-5xl">
           Off The Cuff
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-300 sm:text-xl">
+        <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-slate-300 md:mt-5 md:max-w-xl md:text-lg lg:mt-5 lg:max-w-2xl">
           Practice thinking and speaking on your feet. Click the button, then
           speak for 60 seconds about whatever appears.
         </p>
-        <div className="mx-auto mt-6 flex h-12 w-full max-w-2xl items-center justify-center gap-2 text-sm">
+        <div className="mx-auto mt-5 flex min-h-12 w-full max-w-md flex-wrap items-center justify-center gap-2 text-sm md:mt-6 md:min-h-14 md:max-w-xl md:text-base lg:mt-8 lg:max-w-2xl">
           {PREP_OPTIONS.map((modeOption) => {
             const isActive = modeOption === prepMode;
             return (
@@ -676,7 +676,7 @@ export default function Home() {
                 key={modeOption}
                 type="button"
                 onClick={() => setPrepMode(modeOption)}
-                className={`cursor-pointer rounded-full px-3 py-1.5 transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                className={`cursor-pointer rounded-full px-3 py-1 text-sm transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-4 md:py-1.5 md:text-base ${
                   isActive
                     ? "bg-sky-500 font-semibold text-slate-950 shadow-md shadow-sky-500/20 hover:scale-[1.02] hover:bg-sky-400 focus-visible:ring-sky-300"
                     : "bg-slate-800 text-slate-400 hover:scale-[1.02] hover:bg-slate-700 hover:text-slate-200 hover:shadow-md hover:shadow-slate-950/20 focus-visible:ring-slate-500"
@@ -688,8 +688,8 @@ export default function Home() {
           })}
         </div>
 
-        <div className="mx-auto mt-8 flex h-12 w-full max-w-2xl items-center justify-center overflow-hidden">
-          <div className="flex max-w-full flex-nowrap items-center justify-center gap-2 overflow-x-auto px-1 py-1">
+        <div className="mx-auto mt-5 flex min-h-12 w-full max-w-md items-center justify-center md:mt-6 md:min-h-14 md:max-w-xl lg:mt-8 lg:max-w-2xl">
+          <div className="flex max-w-full flex-wrap items-center justify-center gap-2 px-1 py-1 md:flex-nowrap">
             {CATEGORIES.map((category) => {
               const isActive = category === activeCategory;
               return (
@@ -701,7 +701,7 @@ export default function Home() {
                       setActiveCategory(category);
                     }
                   }}
-                  className={`shrink-0 cursor-pointer rounded-full px-4 py-2 text-sm transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                  className={`shrink-0 cursor-pointer rounded-full px-3 py-1.5 text-sm transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-4 md:py-2 md:text-base ${
                     isActive
                       ? "bg-sky-500 font-semibold text-slate-950 shadow-md shadow-sky-500/20 hover:scale-[1.02] hover:bg-sky-400 focus-visible:ring-sky-300"
                       : "bg-slate-800 font-medium text-slate-400 hover:scale-[1.02] hover:bg-slate-700 hover:text-slate-200 hover:shadow-md hover:shadow-slate-950/20 focus-visible:ring-slate-500"
@@ -714,23 +714,23 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mx-auto mt-10 flex h-16 w-full max-w-3xl items-center justify-center">
+        <div className="mx-auto mt-6 flex h-16 w-full max-w-md items-center justify-center md:mt-8 md:h-20 md:max-w-xl lg:mt-8 lg:max-w-2xl">
           <button
             type="button"
             onClick={() => {
               void preparePromptForMode();
             }}
-            className="cursor-pointer rounded-2xl bg-sky-500 px-10 py-3 text-lg font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            className="cursor-pointer rounded-2xl bg-sky-500 px-6 py-3 text-base font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-7 md:py-3.5 md:text-lg"
           >
             Give me a prompt
           </button>
         </div>
 
         {/* Prompt card — single bordered div; text + padding only (timer/buttons/review are siblings below) */}
-        <div className="mt-10 flex w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/70 p-5 backdrop-blur-sm">
+        <div className="mt-6 flex w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/70 p-5 backdrop-blur-sm md:mt-8 md:p-6 lg:mt-8">
           {currentPrompt ? (
             <p
-              className={`text-2xl font-medium leading-relaxed text-slate-100 transition-all duration-300 ease-out ${
+              className={`text-xl font-medium leading-relaxed text-slate-100 transition-all duration-300 ease-out md:text-2xl ${
                 isPromptVisible
                   ? "translate-y-0 opacity-100"
                   : "translate-y-1 opacity-0"
@@ -739,14 +739,14 @@ export default function Home() {
               {currentPrompt.text}
             </p>
           ) : (
-            <p className="text-base text-slate-400">
+            <p className="text-base text-slate-400 md:text-lg">
               Your prompt will appear here.
             </p>
           )}
         </div>
 
         {/* Timer / countdown slot — sibling of prompt card, not nested inside it */}
-        <div className="mx-auto mt-24 flex h-1 w-full max-w-md flex-col">
+        <div className="mx-auto mt-5 flex h-12 w-full max-w-md flex-col md:mt-6 md:h-16 md:max-w-xl lg:mt-8 lg:h-20 lg:max-w-2xl">
           <div className="relative min-h-0 flex-1 w-full">
             <div
               className={`absolute inset-0 flex flex-col items-center justify-end pb-1 transition-all duration-150 ${
@@ -759,7 +759,7 @@ export default function Home() {
               {prepLabel ? (
                 <p
                   key={prepLabel}
-                  className="animate-pulse text-4xl font-semibold tabular-nums text-sky-300 transition-all duration-150 sm:text-5xl"
+                  className="animate-pulse text-4xl font-semibold tabular-nums text-sky-300 transition-all duration-150 md:text-5xl lg:text-5xl"
                 >
                   {prepLabel}
                 </p>
@@ -773,7 +773,7 @@ export default function Home() {
               }`}
               aria-hidden={!showTimerLayer}
             >
-              <p className="text-4xl font-semibold tabular-nums text-sky-300 transition-all duration-150 sm:text-5xl">
+              <p className="text-4xl font-semibold tabular-nums text-sky-300 transition-all duration-150 md:text-5xl lg:text-5xl">
                 {isReviewState ? frozenReviewTimerLabel : recordingTimerLabel}
               </p>
               <p
@@ -794,7 +794,7 @@ export default function Home() {
               }`}
               aria-hidden={showCountdownLayer || showTimerLayer}
             >
-              <span className="text-4xl font-semibold tabular-nums text-transparent sm:text-5xl" aria-hidden>
+              <span className="text-4xl font-semibold tabular-nums text-transparent md:text-5xl lg:text-5xl" aria-hidden>
                 0:00
               </span>
               <span className="min-h-5 text-sm text-transparent" aria-hidden>
@@ -814,7 +814,7 @@ export default function Home() {
         </div>
 
         {/* Button row */}
-        <div className="relative mx-auto mt-2 h-9 w-full max-w-md overflow-hidden">
+        <div className="relative mx-auto mt-2 h-10 w-full max-w-md overflow-hidden md:h-12 md:max-w-xl lg:h-14 lg:max-w-2xl">
           <div
             className={`absolute inset-0 flex flex-nowrap items-start justify-center gap-2 overflow-x-auto overflow-y-hidden px-1 pt-0 transition-all duration-150 ${
               showManualRecordLayer
@@ -825,7 +825,7 @@ export default function Home() {
             <button
               type="button"
               onClick={startRecording}
-              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
             >
               <span aria-hidden="true">🎤</span>
               Record
@@ -841,7 +841,7 @@ export default function Home() {
               onClick={() => {
                 void startCurrentPromptForMode();
               }}
-              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
             >
               Start
             </button>
@@ -854,7 +854,7 @@ export default function Home() {
             <button
               type="button"
               onClick={resetDuringRecording}
-              className="cursor-pointer rounded-lg border border-slate-600 bg-slate-950/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-300 transition-all duration-150 ease-out hover:scale-[1.02] hover:border-slate-400 hover:bg-slate-800 hover:text-slate-100 hover:shadow-md hover:shadow-slate-950/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="cursor-pointer rounded-lg border border-slate-600 bg-slate-950/20 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-slate-300 transition-all duration-150 ease-out hover:scale-[1.02] hover:border-slate-400 hover:bg-slate-800 hover:text-slate-100 hover:shadow-md hover:shadow-slate-950/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
             >
               Reset
             </button>
@@ -867,7 +867,7 @@ export default function Home() {
             <button
               type="button"
               onClick={isPaused ? resumeRecording : pauseRecording}
-              className={`cursor-pointer rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-all duration-150 ease-out hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+              className={`cursor-pointer rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-all duration-150 ease-out hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3 ${
                 isPaused
                   ? "bg-amber-500 text-slate-950 shadow-amber-500/25 hover:bg-amber-400 hover:shadow-amber-500/35 focus-visible:ring-amber-300"
                   : "bg-amber-600 text-slate-100 shadow-amber-600/25 hover:bg-amber-500 hover:shadow-amber-500/35 focus-visible:ring-amber-400"
@@ -878,7 +878,7 @@ export default function Home() {
             <button
               type="button"
               onClick={stopRecording}
-              className="flex cursor-pointer items-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-rose-500/25 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-rose-400 hover:shadow-lg hover:shadow-rose-500/35 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-rose-500/25 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-rose-400 hover:shadow-lg hover:shadow-rose-500/35 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
             >
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-200 shadow-sm shadow-red-200/70 ring-2 ring-red-200/30" />
               Stop
@@ -886,7 +886,7 @@ export default function Home() {
             <button
               type="button"
               onClick={resetDuringRecording}
-              className="cursor-pointer rounded-lg border border-slate-600 bg-slate-950/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-300 transition-all duration-150 ease-out hover:scale-[1.02] hover:border-slate-400 hover:bg-slate-800 hover:text-slate-100 hover:shadow-md hover:shadow-slate-950/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="cursor-pointer rounded-lg border border-slate-600 bg-slate-950/20 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-slate-300 transition-all duration-150 ease-out hover:scale-[1.02] hover:border-slate-400 hover:bg-slate-800 hover:text-slate-100 hover:shadow-md hover:shadow-slate-950/20 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
             >
               Reset
             </button>
@@ -924,14 +924,14 @@ export default function Home() {
                   setPrepCountdown(prepSeconds);
                 })();
               }}
-              className="cursor-pointer rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 shadow-md shadow-slate-950/25 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-slate-700 hover:shadow-lg hover:shadow-slate-950/30 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="cursor-pointer rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 shadow-md shadow-slate-950/25 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-slate-700 hover:shadow-lg hover:shadow-slate-950/30 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
             >
               Record again
             </button>
           </div>
         </div>
         {hasRecording && audioUrl ? (
-          <div className="mx-auto mt-2 flex w-full max-w-2xl flex-col gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition-all duration-150">
+          <div className="mx-auto mt-2 flex w-full max-w-md flex-col gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition-all duration-150 md:mt-3 md:max-w-xl md:gap-3 md:p-4 lg:mt-3 lg:max-w-2xl">
             <audio controls src={audioUrl} className="w-full" />
             {(finalTranscript || interimTranscript || !isTranscriptionSupported) && (
               <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
@@ -939,11 +939,11 @@ export default function Home() {
                   Transcript
                 </p>
                 {!isTranscriptionSupported ? (
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-slate-500 md:text-sm lg:text-base">
                     Transcription not supported in this browser.
                   </p>
                 ) : (
-                  <p className="mt-2 text-sm leading-relaxed text-slate-200">
+                  <p className="mt-2 text-sm leading-relaxed text-slate-200 md:text-base lg:text-lg">
                     {finalTranscript ? <span>{finalTranscript} </span> : null}
                     {interimTranscript ? (
                       <span className="text-slate-400">{interimTranscript}</span>
