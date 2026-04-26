@@ -2,76 +2,85 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type PromptCategory = "Personal" | "Opinion" | "Creative" | "Abstract" | "Silly";
+type PromptCategory =
+  | "Personal"
+  | "Opinion"
+  | "Pitch"
+  | "Creative"
+  | "Abstract"
+  | "Silly";
 type FilterCategory = "All" | PromptCategory;
 type Prompt = { text: string; category: PromptCategory };
 type PrepMode = "3s" | "5s" | "10s" | "Manual";
 
 const PROMPTS = [
-  { text: "Describe your ideal Saturday from morning to night.", category: "Personal" },
-  { text: "What small habit has changed your life the most?", category: "Personal" },
-  { text: "Describe your childhood home to someone who has never visited it.", category: "Personal" },
-  { text: "What is a lesson you learned too late?", category: "Personal" },
-  { text: "Describe a place that makes you instantly calmer.", category: "Personal" },
-  { text: "Tell the story of a time you changed your mind.", category: "Personal" },
-  { text: "Describe a smell that immediately brings back a memory.", category: "Personal" },
-  { text: "What is a small act of kindness you still remember?", category: "Personal" },
-  { text: "Describe a moment you felt unexpectedly proud.", category: "Personal" },
-  { text: "Describe your ideal morning routine.", category: "Personal" },
-  { text: "If your life were a playlist, what song opens it?", category: "Personal" },
-  { text: "What advice would you give your future self five years from now?", category: "Personal" },
-  { text: "Argue that cereal is or is not soup.", category: "Opinion" },
-  { text: "Should meetings be capped at 15 minutes by default?", category: "Opinion" },
-  { text: "Should cities prioritize bikes over cars?", category: "Opinion" },
-  { text: "Should schools start later in the morning?", category: "Opinion" },
-  { text: "Should remote work be the default?", category: "Opinion" },
-  { text: "Should everyone learn basic public speaking in school?", category: "Opinion" },
-  { text: "Would you trade convenience for privacy?", category: "Opinion" },
-  { text: "Should phones be allowed at the dinner table?", category: "Opinion" },
-  { text: "Should AI tools be mandatory in classrooms?", category: "Opinion" },
-  { text: "Should people specialize early or explore broadly?", category: "Opinion" },
-  { text: "Should every company publish salaries?", category: "Opinion" },
-  { text: "Should people read more fiction or nonfiction?", category: "Opinion" },
-  { text: "Pitch a product you would invent if you had $1M.", category: "Creative" },
-  { text: "Describe your dream app in one minute.", category: "Creative" },
-  { text: "If you had to create a new holiday, what would it celebrate?", category: "Creative" },
-  { text: "If your city had a mascot, what should it be?", category: "Creative" },
-  { text: "Describe a fictional world you would want to live in.", category: "Creative" },
-  { text: "If you had one billboard for the world to read, what would it say?", category: "Creative" },
-  { text: "If you had to teach one class tomorrow, what would it be?", category: "Creative" },
-  { text: "Describe an app feature that would genuinely reduce stress.", category: "Creative" },
-  { text: "If you had to start over in a new city, what would you do first?", category: "Creative" },
-  { text: "Describe a day in your life ten years from now.", category: "Creative" },
-  { text: "Describe a color to someone who has never seen before.", category: "Abstract" },
-  { text: "Explain why boredom is either useful or dangerous.", category: "Abstract" },
-  { text: "What does confidence look like in everyday life?", category: "Abstract" },
-  { text: "Is failure mostly a mindset or mostly an outcome?", category: "Abstract" },
-  { text: "What is the difference between being busy and being productive?", category: "Abstract" },
-  { text: "What is more important: consistency or intensity?", category: "Abstract" },
-  { text: "What makes a conversation truly memorable?", category: "Abstract" },
-  { text: "What does success look like when no one is watching?", category: "Abstract" },
-  { text: "How do you define courage in ordinary life?", category: "Abstract" },
-  { text: "Is optimism a skill you can practice?", category: "Abstract" },
-  { text: "What does healthy ambition look like?", category: "Abstract" },
-  { text: "What does balance mean to you right now?", category: "Abstract" },
-  { text: "If you could rename Monday, what would you call it?", category: "Silly" },
-  { text: "Would you rather be extremely lucky or extremely disciplined?", category: "Silly" },
-  { text: "If your week had a theme song, what would it be and why?", category: "Silly" },
-  { text: "What everyday object deserves a complete redesign?", category: "Silly" },
-  { text: "If you could solve one tiny annoyance forever, what would it be?", category: "Silly" },
-  { text: "Explain a complex topic using only kitchen analogies.", category: "Silly" },
-  { text: "If you had to ban one buzzword, what would it be?", category: "Silly" },
-  { text: "How would you explain the internet to someone from 1850?", category: "Silly" },
-  { text: "What should people stop apologizing for?", category: "Silly" },
-  { text: "What is one thing people overcomplicate?", category: "Silly" },
-  { text: "What is something that sounds boring but is actually fascinating?", category: "Silly" },
-  { text: "What role does humor play in difficult conversations?", category: "Silly" },
+  { text: "Describe the first 15 minutes of your workday, including the tiny choices that set the tone.", category: "Personal" },
+  { text: "Tell the story of a room you still remember clearly, using three objects in it as anchors.", category: "Personal" },
+  { text: "Describe a meal someone made for you that felt like more than just food.", category: "Personal" },
+  { text: "Talk through a time you almost quit something but stayed for one more try.", category: "Personal" },
+  { text: "Describe the version of yourself your closest friend sees that strangers usually miss.", category: "Personal" },
+  { text: "Tell the story of a small purchase that made your daily life noticeably better.", category: "Personal" },
+  { text: "Describe a place in your neighborhood that you would miss if you moved tomorrow.", category: "Personal" },
+  { text: "Walk through your perfect evening after a difficult day, from the door opening onward.", category: "Personal" },
+  { text: "Tell the story of a compliment you still remember and why it landed.", category: "Personal" },
+  { text: "Describe one habit you inherited from your family, and whether you want to keep it.", category: "Personal" },
+  { text: "Argue that voice messages are warmer than texts, or make the opposite case.", category: "Opinion" },
+  { text: "Make the case that every calendar should have one meeting-free day each week.", category: "Opinion" },
+  { text: "Defend the idea that being early is overrated, or argue that it reveals character.", category: "Opinion" },
+  { text: "Argue that restaurants should have smaller menus, using one memorable example.", category: "Opinion" },
+  { text: "Make the case that everyone should keep one analog tool in their digital life.", category: "Opinion" },
+  { text: "Argue that silence in conversation is useful, or explain why it usually hurts the room.", category: "Opinion" },
+  { text: "Defend spending extra money on one everyday item, and explain where you would never splurge.", category: "Opinion" },
+  { text: "Make the case that people should reread favorite books instead of always chasing new ones.", category: "Opinion" },
+  { text: "Argue that a messy desk helps creativity, or that it quietly drains attention.", category: "Opinion" },
+  { text: "Defend the idea that walking is one of the best forms of problem solving.", category: "Opinion" },
+  { text: "Pitch a service that fixes one annoying part of your morning routine.", category: "Pitch" },
+  { text: "Convince a skeptical manager to fund a tiny tool that would save your team one hour a week.", category: "Pitch" },
+  { text: "Pitch yourself for a role where your unusual background is the main advantage.", category: "Pitch" },
+  { text: "Sell a local shop on an event that would bring new people through the door this weekend.", category: "Pitch" },
+  { text: "Pitch an app that helps people make better plans with friends without endless group chats.", category: "Pitch" },
+  { text: "Convince a busy parent to try a product that gives them 10 quiet minutes a day.", category: "Pitch" },
+  { text: "Pitch a newsletter someone would actually look forward to opening on Monday morning.", category: "Pitch" },
+  { text: "Sell your professional superpower to a client who has never worked with someone like you.", category: "Pitch" },
+  { text: "Pitch a low-cost improvement to your favorite public space, with a clear before-and-after.", category: "Pitch" },
+  { text: "Convince a friend to join a side project you would genuinely want to build.", category: "Pitch" },
+  { text: "Invent a museum exhibit built around one ordinary object from your kitchen.", category: "Creative" },
+  { text: "Design a restaurant where every course is based on a different weather forecast.", category: "Creative" },
+  { text: "Create a movie trailer for a mystery that happens entirely during a delayed flight.", category: "Creative" },
+  { text: "Describe a city where everyone has to swap jobs for one day each year.", category: "Creative" },
+  { text: "Invent a holiday that celebrates unfinished projects and explain its main ritual.", category: "Creative" },
+  { text: "Design a tiny home for someone who collects one very impractical thing.", category: "Creative" },
+  { text: "Create a podcast premise where the host interviews people about one object in their bag.", category: "Creative" },
+  { text: "Describe a theme park ride based on the feeling of checking your email.", category: "Creative" },
+  { text: "Invent a children's book character who solves problems by asking boring questions.", category: "Creative" },
+  { text: "Design a class that teaches adults how to be beginners again.", category: "Creative" },
+  { text: "What is the difference between being comfortable and being stuck?", category: "Abstract" },
+  { text: "Why do people trust a story faster than a statistic?", category: "Abstract" },
+  { text: "What makes advice feel generous instead of intrusive?", category: "Abstract" },
+  { text: "When does patience become avoidance?", category: "Abstract" },
+  { text: "What is the difference between taste and judgment?", category: "Abstract" },
+  { text: "Why do small rituals make ordinary days feel more meaningful?", category: "Abstract" },
+  { text: "What does it mean to be reliable without becoming predictable?", category: "Abstract" },
+  { text: "Why is starting often harder than continuing?", category: "Abstract" },
+  { text: "What is the difference between privacy and secrecy?", category: "Abstract" },
+  { text: "When does ambition make life bigger, and when does it make life smaller?", category: "Abstract" },
+  { text: "Convince me that soup is just a drink with confidence.", category: "Silly" },
+  { text: "Explain why pigeons would be excellent city council members.", category: "Silly" },
+  { text: "Describe the group chat your houseplants would start about you.", category: "Silly" },
+  { text: "Make the case that socks should have biographies printed on the package.", category: "Silly" },
+  { text: "Pitch a luxury spa day designed specifically for tired office chairs.", category: "Silly" },
+  { text: "Explain what cats would put on their resumes if they had to get jobs.", category: "Silly" },
+  { text: "Describe a cooking show where the contestants are all raccoons with strong opinions.", category: "Silly" },
+  { text: "Convince a jury that the missing TV remote is innocent.", category: "Silly" },
+  { text: "Give a dramatic awards speech for the best snack in your pantry.", category: "Silly" },
+  { text: "Describe what elevators gossip about after everyone leaves the building.", category: "Silly" },
 ] satisfies Prompt[];
 
 const CATEGORIES: FilterCategory[] = [
   "All",
   "Personal",
   "Opinion",
+  "Pitch",
   "Creative",
   "Abstract",
   "Silly",
@@ -737,7 +746,7 @@ export default function Home() {
         </div>
 
         {/* Timer / countdown slot — sibling of prompt card, not nested inside it */}
-        <div className="mx-auto mt-14 flex h-14 w-full max-w-md flex-col">
+        <div className="mx-auto mt-24 flex h-1 w-full max-w-md flex-col">
           <div className="relative min-h-0 flex-1 w-full">
             <div
               className={`absolute inset-0 flex flex-col items-center justify-end pb-1 transition-all duration-150 ${
@@ -805,7 +814,7 @@ export default function Home() {
         </div>
 
         {/* Button row */}
-        <div className="relative mx-auto mt-1 h-8 w-full max-w-md overflow-hidden">
+        <div className="relative mx-auto mt-2 h-9 w-full max-w-md overflow-hidden">
           <div
             className={`absolute inset-0 flex flex-nowrap items-start justify-center gap-2 overflow-x-auto overflow-y-hidden px-1 pt-0 transition-all duration-150 ${
               showManualRecordLayer
