@@ -696,6 +696,9 @@ export default function Home() {
     if (!isRecording || !mediaRecorderRef.current) {
       return;
     }
+    setIsRecording(false);
+    setIsPaused(false);
+    setIsTimerRunning(false);
     stopRecognition();
     if (mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
@@ -730,7 +733,9 @@ export default function Home() {
   );
   const showPrepResetLayer = Boolean(isPreparing);
   const showRecordingControlsLayer = Boolean(isRecording);
-  const showReviewControlsLayer = Boolean(isReviewState);
+  const showReviewControlsLayer = Boolean(
+    isReviewState && transcriptionStatus !== "transcribing"
+  );
   const transcriptAnalysis = useMemo(() => {
     const wordMatches = finalTranscript.match(WORD_PATTERN) ?? [];
     const parts: { text: string; isFiller: boolean }[] = [];
