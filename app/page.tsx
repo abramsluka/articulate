@@ -139,6 +139,23 @@ const appendTranscript = (existingText: string, nextText: string) => {
   return existing ? `${existing} ${next}` : next;
 };
 
+const getAudioExtensionFromMimeType = (mimeType: string) => {
+  const normalizedMimeType = mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+  if (normalizedMimeType === "audio/webm") return "webm";
+  if (normalizedMimeType === "audio/mp4") return "mp4";
+  if (normalizedMimeType === "audio/mpeg") return "mp3";
+  if (normalizedMimeType === "audio/wav" || normalizedMimeType === "audio/x-wav") {
+    return "wav";
+  }
+  if (normalizedMimeType === "audio/ogg") return "ogg";
+  if (normalizedMimeType === "audio/aac") return "aac";
+  if (normalizedMimeType === "audio/m4a" || normalizedMimeType === "audio/x-m4a") {
+    return "m4a";
+  }
+  if (normalizedMimeType === "audio/3gpp") return "3gp";
+  return "webm";
+};
+
 const getSpeechRecognitionConstructor = () => {
   if (typeof window === "undefined") {
     return null;
@@ -166,6 +183,9 @@ export default function Home() {
   const [reviewElapsedSeconds, setReviewElapsedSeconds] = useState<number | null>(null);
   const [finalTranscript, setFinalTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [transcriptionStatus, setTranscriptionStatus] = useState<
+    "idle" | "transcribing" | "done" | "error"
+  >("idle");
   const [isTranscriptionSupported, setIsTranscriptionSupported] = useState(true);
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -175,6 +195,8 @@ export default function Home() {
   const discardRecordingOnStopRef = useRef(false);
   const hasMountedPrepModeRef = useRef(false);
   const secondsLeftRef = useRef(TIMER_DURATION);
+  const finalTranscriptRef = useRef("");
+  const transcriptionRequestIdRef = useRef(0);
 
   useEffect(() => {
     document.title = "Off The Cuff";
@@ -228,6 +250,8 @@ export default function Home() {
     setRecordingError("");
     setFinalTranscript("");
     setInterimTranscript("");
+    setTranscriptionStatus("idle");
+    transcriptionRequestIdRef.current += 1;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -275,6 +299,10 @@ export default function Home() {
   useEffect(() => {
     secondsLeftRef.current = secondsLeft;
   }, [secondsLeft]);
+
+  useEffect(() => {
+    finalTranscriptRef.current = finalTranscript;
+  }, [finalTranscript]);
 
   useEffect(() => {
     if (prepCountdown === null) {
@@ -353,6 +381,7 @@ export default function Home() {
 
   const clearRecording = () => {
     discardRecordingOnStopRef.current = true;
+    transcriptionRequestIdRef.current += 1;
     stopRecognition();
     stopAndReleaseMicrophone();
     setIsRecording(false);
@@ -362,6 +391,7 @@ export default function Home() {
     setRecordingError("");
     setFinalTranscript("");
     setInterimTranscript("");
+    setTranscriptionStatus("idle");
     audioChunksRef.current = [];
     setAudioUrl((previousUrl) => {
       if (previousUrl) {
@@ -542,15 +572,18 @@ export default function Home() {
         }
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         stopRecognition();
         const shouldDiscardRecording = discardRecordingOnStopRef.current;
         discardRecordingOnStopRef.current = false;
+        const recordingMimeType =
+          recorder.mimeType || audioChunksRef.current[0]?.type || "audio/webm";
         const recording = new Blob(audioChunksRef.current, {
-          type: recorder.mimeType || "audio/webm",
+          type: recordingMimeType,
         });
         audioChunksRef.current = [];
         if (!shouldDiscardRecording && recording.size > 0) {
+          const fallbackTranscript = finalTranscriptRef.current;
           const elapsedSeconds = Math.max(
             0,
             Math.min(TIMER_DURATION, TIMER_DURATION - secondsLeftRef.current)
@@ -564,6 +597,43 @@ export default function Home() {
             return nextAudioUrl;
           });
           setHasRecording(true);
+          setTranscriptionStatus("transcribing");
+
+          const requestId = transcriptionRequestIdRef.current + 1;
+          transcriptionRequestIdRef.current = requestId;
+          const fileExtension = getAudioExtensionFromMimeType(
+            recording.type || recordingMimeType
+          );
+          const formData = new FormData();
+          formData.append("audio", recording, `recording.${fileExtension}`);
+
+          try {
+            const response = await fetch("/api/transcribe", {
+              method: "POST",
+              body: formData,
+            });
+            if (!response.ok) {
+              throw new Error("Transcription request failed");
+            }
+
+            const data = (await response.json()) as { text?: string };
+            if (requestId !== transcriptionRequestIdRef.current) {
+              return;
+            }
+            if (typeof data.text === "string") {
+              setFinalTranscript(data.text);
+              setTranscriptionStatus("done");
+            } else {
+              setFinalTranscript(fallbackTranscript);
+              setTranscriptionStatus("error");
+            }
+          } catch {
+            if (requestId !== transcriptionRequestIdRef.current) {
+              return;
+            }
+            setFinalTranscript(fallbackTranscript);
+            setTranscriptionStatus("error");
+          }
         }
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -579,6 +649,7 @@ export default function Home() {
       recorder.start();
       setFinalTranscript("");
       setInterimTranscript("");
+      setTranscriptionStatus("idle");
       startRecognition();
       setRecordingError("");
       setHasRecording(false);
@@ -1017,25 +1088,38 @@ export default function Home() {
                     Transcript
                   </p>
                   <p className="mt-2 text-sm leading-relaxed text-slate-200 md:text-base lg:text-lg">
-                    {finalTranscript ? (
-                      transcriptAnalysis.parts.map((part, index) =>
-                        part.isFiller ? (
-                          <span
-                            key={`${part.text}-${index}`}
-                            className="rounded bg-amber-500/20 px-1 text-amber-200"
-                          >
-                            {part.text}
-                          </span>
-                        ) : (
-                          <span key={`${part.text}-${index}`}>{part.text}</span>
-                        )
-                      )
+                    {transcriptionStatus === "transcribing" ? (
+                      <span className="animate-pulse text-slate-300">
+                        Transcribing your audio...
+                      </span>
                     ) : (
-                      <span className="text-slate-500">No transcript captured.</span>
+                      <>
+                        {transcriptionStatus === "error" ? (
+                          <span className="mb-1 block text-xs text-amber-300 md:text-sm">
+                            Transcription unavailable, showing live preview
+                          </span>
+                        ) : null}
+                        {finalTranscript ? (
+                          transcriptAnalysis.parts.map((part, index) =>
+                            part.isFiller ? (
+                              <span
+                                key={`${part.text}-${index}`}
+                                className="rounded bg-amber-500/20 px-1 text-amber-200"
+                              >
+                                {part.text}
+                              </span>
+                            ) : (
+                              <span key={`${part.text}-${index}`}>{part.text}</span>
+                            )
+                          )
+                        ) : (
+                          <span className="text-slate-500">No transcript captured.</span>
+                        )}
+                        {interimTranscript ? (
+                          <span className="text-slate-400">{interimTranscript}</span>
+                        ) : null}
+                      </>
                     )}
-                    {interimTranscript ? (
-                      <span className="text-slate-400">{interimTranscript}</span>
-                    ) : null}
                   </p>
                 </>
               )}
