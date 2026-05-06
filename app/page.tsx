@@ -186,6 +186,10 @@ export default function Home() {
   const [transcriptionStatus, setTranscriptionStatus] = useState<
     "idle" | "transcribing" | "done" | "error"
   >("idle");
+  const [analysisStatus, setAnalysisStatus] = useState<
+    "idle" | "analyzing" | "done" | "error"
+  >("idle");
+  const [feedback, setFeedback] = useState<string>("");
   const [isTranscriptionSupported, setIsTranscriptionSupported] = useState(true);
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -251,6 +255,8 @@ export default function Home() {
     setFinalTranscript("");
     setInterimTranscript("");
     setTranscriptionStatus("idle");
+    setAnalysisStatus("idle");
+    setFeedback("");
     transcriptionRequestIdRef.current += 1;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -392,6 +398,8 @@ export default function Home() {
     setFinalTranscript("");
     setInterimTranscript("");
     setTranscriptionStatus("idle");
+    setAnalysisStatus("idle");
+    setFeedback("");
     audioChunksRef.current = [];
     setAudioUrl((previousUrl) => {
       if (previousUrl) {
@@ -598,6 +606,8 @@ export default function Home() {
           });
           setHasRecording(true);
           setTranscriptionStatus("transcribing");
+          setAnalysisStatus("idle");
+          setFeedback("");
 
           const requestId = transcriptionRequestIdRef.current + 1;
           transcriptionRequestIdRef.current = requestId;
@@ -623,9 +633,48 @@ export default function Home() {
             if (typeof data.text === "string") {
               setFinalTranscript(data.text);
               setTranscriptionStatus("done");
+              setAnalysisStatus("analyzing");
+
+              try {
+                const analysisResponse = await fetch("/api/analyze", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    prompt: currentPrompt.text,
+                    transcript: data.text,
+                  }),
+                });
+
+                if (!analysisResponse.ok) {
+                  throw new Error("Analysis request failed");
+                }
+
+                const analysisData = (await analysisResponse.json()) as { feedback?: string };
+                if (requestId !== transcriptionRequestIdRef.current) {
+                  return;
+                }
+
+                if (typeof analysisData.feedback === "string" && analysisData.feedback.trim()) {
+                  setFeedback(analysisData.feedback);
+                  setAnalysisStatus("done");
+                } else {
+                  setFeedback("Coaching feedback unavailable for this session.");
+                  setAnalysisStatus("error");
+                }
+              } catch {
+                if (requestId !== transcriptionRequestIdRef.current) {
+                  return;
+                }
+                setFeedback("Coaching feedback unavailable for this session.");
+                setAnalysisStatus("error");
+              }
             } else {
               setFinalTranscript(fallbackTranscript);
               setTranscriptionStatus("error");
+              setAnalysisStatus("error");
+              setFeedback("Coaching feedback unavailable for this session.");
             }
           } catch {
             if (requestId !== transcriptionRequestIdRef.current) {
@@ -633,6 +682,8 @@ export default function Home() {
             }
             setFinalTranscript(fallbackTranscript);
             setTranscriptionStatus("error");
+            setAnalysisStatus("error");
+            setFeedback("Coaching feedback unavailable for this session.");
           }
         }
         if (mediaStreamRef.current) {
@@ -650,6 +701,8 @@ export default function Home() {
       setFinalTranscript("");
       setInterimTranscript("");
       setTranscriptionStatus("idle");
+      setAnalysisStatus("idle");
+      setFeedback("");
       startRecognition();
       setRecordingError("");
       setHasRecording(false);
@@ -1126,6 +1179,30 @@ export default function Home() {
                       </>
                     )}
                   </p>
+                  {analysisStatus !== "idle" ? (
+                    <div className="mt-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Coaching
+                      </p>
+                      {analysisStatus === "analyzing" ? (
+                        <p className="mt-2 animate-pulse text-sm leading-relaxed text-slate-300 md:text-base">
+                          Analyzing your response...
+                        </p>
+                      ) : null}
+                      {analysisStatus === "done" ? (
+                        <div className="mt-2 rounded-lg bg-slate-800/50 p-4">
+                          <p className="whitespace-pre-line text-sm leading-relaxed text-slate-200 md:text-base">
+                            {feedback}
+                          </p>
+                        </div>
+                      ) : null}
+                      {analysisStatus === "error" ? (
+                        <p className="mt-2 text-xs text-slate-400 md:text-sm">
+                          Coaching feedback unavailable
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>
