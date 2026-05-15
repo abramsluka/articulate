@@ -40,10 +40,10 @@ export default function Home() {
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 md:px-6 md:py-10 lg:px-8 lg:py-12">
       <section className="mx-auto w-full max-w-6xl">
         <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
-          Off The Cuff
+          Articulate
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-300 md:text-lg">
-          Train your voice. Every day.
+          Build sharper speaking habits with guided drills and real-time feedback.
         </p>
 
         <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

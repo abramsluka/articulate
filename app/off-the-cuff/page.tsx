@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+} from "recharts";
 
 type PromptCategory =
   | "Personal"
@@ -12,6 +20,30 @@ type PromptCategory =
 type FilterCategory = "All" | PromptCategory;
 type Prompt = { text: string; category: PromptCategory };
 type PrepMode = "3s" | "5s" | "10s" | "Manual";
+type TipCategory = "clarity" | "evidence" | "structure" | "conviction";
+type AnalysisResult = {
+  overallScore: number;
+  axes: {
+    pace: number;
+    evidence: number;
+    confidence: number;
+    clarity: number;
+    fillerWords: number;
+  };
+  sentenceTips: {
+    sentenceText: string;
+    tip: string;
+    category: TipCategory;
+  }[];
+  powerWords: string[];
+  weakWords: string[];
+  structure: {
+    hasOpening: boolean;
+    hasBody: boolean;
+    hasClosing: boolean;
+  };
+  summary: string;
+};
 
 const PROMPTS = [
   { text: "Describe the first 15 minutes of your workday, including the tiny choices that set the tone.", category: "Personal" },
@@ -139,6 +171,71 @@ const appendTranscript = (existingText: string, nextText: string) => {
   return existing ? `${existing} ${next}` : next;
 };
 
+const normalizeSentence = (sentence: string) =>
+  sentence.toLowerCase().replace(/\s+/g, " ").trim().replace(/[.!?]+$/, "");
+
+const splitTranscriptSentences = (text: string) =>
+  text.match(/[^.!?]+[.!?]*\s*/g) ?? [];
+
+const highlightFillerParts = (text: string) => {
+  const parts: { text: string; isFiller: boolean }[] = [];
+  const matcher = new RegExp(FILLER_PATTERN.source, FILLER_PATTERN.flags);
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, match.index), isFiller: false });
+    }
+    parts.push({ text: match[0], isFiller: true });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), isFiller: false });
+  }
+
+  return parts;
+};
+
+const isTipCategory = (value: unknown): value is TipCategory =>
+  value === "clarity" ||
+  value === "evidence" ||
+  value === "structure" ||
+  value === "conviction";
+
+const isAnalysisResult = (value: unknown): value is AnalysisResult => {
+  if (!value || typeof value !== "object") return false;
+  const data = value as Partial<AnalysisResult>;
+
+  return (
+    typeof data.overallScore === "number" &&
+    !!data.axes &&
+    typeof data.axes.pace === "number" &&
+    typeof data.axes.evidence === "number" &&
+    typeof data.axes.confidence === "number" &&
+    typeof data.axes.clarity === "number" &&
+    typeof data.axes.fillerWords === "number" &&
+    Array.isArray(data.sentenceTips) &&
+    data.sentenceTips.every(
+      (tip) =>
+        !!tip &&
+        typeof tip.sentenceText === "string" &&
+        typeof tip.tip === "string" &&
+        isTipCategory(tip.category)
+    ) &&
+    Array.isArray(data.powerWords) &&
+    data.powerWords.every((word) => typeof word === "string") &&
+    Array.isArray(data.weakWords) &&
+    data.weakWords.every((word) => typeof word === "string") &&
+    !!data.structure &&
+    typeof data.structure.hasOpening === "boolean" &&
+    typeof data.structure.hasBody === "boolean" &&
+    typeof data.structure.hasClosing === "boolean" &&
+    typeof data.summary === "string"
+  );
+};
+
 const getAudioExtensionFromMimeType = (mimeType: string) => {
   const normalizedMimeType = mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
   if (normalizedMimeType === "audio/webm") return "webm";
@@ -189,7 +286,7 @@ export default function Home() {
   const [analysisStatus, setAnalysisStatus] = useState<
     "idle" | "analyzing" | "done" | "error"
   >("idle");
-  const [feedback, setFeedback] = useState<string>("");
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isTranscriptionSupported, setIsTranscriptionSupported] = useState(true);
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -256,7 +353,7 @@ export default function Home() {
     setInterimTranscript("");
     setTranscriptionStatus("idle");
     setAnalysisStatus("idle");
-    setFeedback("");
+    setAnalysisResult(null);
     transcriptionRequestIdRef.current += 1;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -399,7 +496,7 @@ export default function Home() {
     setInterimTranscript("");
     setTranscriptionStatus("idle");
     setAnalysisStatus("idle");
-    setFeedback("");
+    setAnalysisResult(null);
     audioChunksRef.current = [];
     setAudioUrl((previousUrl) => {
       if (previousUrl) {
@@ -607,7 +704,7 @@ export default function Home() {
           setHasRecording(true);
           setTranscriptionStatus("transcribing");
           setAnalysisStatus("idle");
-          setFeedback("");
+          setAnalysisResult(null);
 
           const requestId = transcriptionRequestIdRef.current + 1;
           transcriptionRequestIdRef.current = requestId;
@@ -651,30 +748,30 @@ export default function Home() {
                   throw new Error("Analysis request failed");
                 }
 
-                const analysisData = (await analysisResponse.json()) as { feedback?: string };
+                const analysisData = (await analysisResponse.json()) as unknown;
                 if (requestId !== transcriptionRequestIdRef.current) {
                   return;
                 }
 
-                if (typeof analysisData.feedback === "string" && analysisData.feedback.trim()) {
-                  setFeedback(analysisData.feedback);
+                if (isAnalysisResult(analysisData)) {
+                  setAnalysisResult(analysisData);
                   setAnalysisStatus("done");
                 } else {
-                  setFeedback("Coaching feedback unavailable for this session.");
+                  setAnalysisResult(null);
                   setAnalysisStatus("error");
                 }
               } catch {
                 if (requestId !== transcriptionRequestIdRef.current) {
                   return;
                 }
-                setFeedback("Coaching feedback unavailable for this session.");
+                setAnalysisResult(null);
                 setAnalysisStatus("error");
               }
             } else {
               setFinalTranscript(fallbackTranscript);
               setTranscriptionStatus("error");
               setAnalysisStatus("error");
-              setFeedback("Coaching feedback unavailable for this session.");
+              setAnalysisResult(null);
             }
           } catch {
             if (requestId !== transcriptionRequestIdRef.current) {
@@ -683,7 +780,7 @@ export default function Home() {
             setFinalTranscript(fallbackTranscript);
             setTranscriptionStatus("error");
             setAnalysisStatus("error");
-            setFeedback("Coaching feedback unavailable for this session.");
+            setAnalysisResult(null);
           }
         }
         if (mediaStreamRef.current) {
@@ -702,7 +799,7 @@ export default function Home() {
       setInterimTranscript("");
       setTranscriptionStatus("idle");
       setAnalysisStatus("idle");
-      setFeedback("");
+      setAnalysisResult(null);
       startRecognition();
       setRecordingError("");
       setHasRecording(false);
@@ -839,6 +936,41 @@ export default function Home() {
     { label: "Filler %", value: fillerPercent },
     { label: "Pace WPM", value: paceWordsPerMinute },
   ];
+  const tipBySentence = useMemo(() => {
+    const map = new Map<string, AnalysisResult["sentenceTips"][number]>();
+    if (!analysisResult) {
+      return map;
+    }
+    analysisResult.sentenceTips.forEach((tip) => {
+      const normalized = normalizeSentence(tip.sentenceText);
+      if (normalized) {
+        map.set(normalized, tip);
+      }
+    });
+    return map;
+  }, [analysisResult]);
+  const transcriptSentences = useMemo(
+    () => splitTranscriptSentences(finalTranscript),
+    [finalTranscript]
+  );
+  const radarData = analysisResult
+    ? [
+        { axis: "Pace", score: analysisResult.axes.pace },
+        { axis: "Evidence", score: analysisResult.axes.evidence },
+        { axis: "Confidence", score: analysisResult.axes.confidence },
+        { axis: "Clarity", score: analysisResult.axes.clarity },
+        { axis: "Fillers", score: analysisResult.axes.fillerWords },
+      ]
+    : [];
+  const safeOverallScore = analysisResult
+    ? Number(Math.min(10, Math.max(0, analysisResult.overallScore)).toFixed(1))
+    : 0;
+  const ringRadius = 52;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringOffset =
+    ringCircumference - (safeOverallScore / 10) * ringCircumference;
+  const hasPowerWords = Boolean(analysisResult?.powerWords.length);
+  const hasWeakWords = Boolean(analysisResult?.weakWords.length);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-6 text-slate-100 md:px-6 md:py-8 lg:px-8 lg:py-9">
@@ -1115,7 +1247,7 @@ export default function Home() {
         {hasRecording && audioUrl ? (
           <div className="mx-auto mt-2 flex w-full max-w-md flex-col gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition-all duration-150 md:mt-3 md:max-w-xl md:gap-3 md:p-4 lg:mt-3 lg:max-w-2xl">
             <audio controls src={audioUrl} className="w-full" />
-            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
+            <div className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
               {!isTranscriptionSupported ? (
                 <>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -1127,82 +1259,266 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {speechStats.map((stat) => (
-                      <div
-                        key={stat.label}
-                        className="rounded-lg bg-slate-800/50 p-3 text-center"
-                      >
-                        <p className="text-lg font-semibold tabular-nums text-slate-100 md:text-xl">
-                          {stat.value}
-                        </p>
-                        <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400 md:text-xs">
-                          {stat.label}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Transcript
-                  </p>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-200 md:text-base lg:text-lg">
-                    {transcriptionStatus === "transcribing" ? (
-                      <span className="animate-pulse text-slate-300">
-                        Transcribing your audio...
-                      </span>
-                    ) : (
-                      <>
-                        {transcriptionStatus === "error" ? (
-                          <span className="mb-1 block text-xs text-amber-300 md:text-sm">
-                            Transcription unavailable, showing live preview
-                          </span>
-                        ) : null}
-                        {finalTranscript ? (
-                          transcriptAnalysis.parts.map((part, index) =>
-                            part.isFiller ? (
-                              <span
-                                key={`${part.text}-${index}`}
-                                className="rounded bg-amber-500/20 px-1 text-amber-200"
-                              >
-                                {part.text}
-                              </span>
-                            ) : (
-                              <span key={`${part.text}-${index}`}>{part.text}</span>
-                            )
-                          )
-                        ) : (
-                          <span className="text-slate-500">No transcript captured.</span>
-                        )}
-                        {interimTranscript ? (
-                          <span className="text-slate-400">{interimTranscript}</span>
-                        ) : null}
-                      </>
-                    )}
-                  </p>
-                  {analysisStatus !== "idle" ? (
-                    <div className="mt-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Coaching
+                  {analysisStatus === "analyzing" ? (
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                      <p className="animate-pulse text-sm text-slate-300 md:text-base">
+                        Analyzing your response...
                       </p>
-                      {analysisStatus === "analyzing" ? (
-                        <p className="mt-2 animate-pulse text-sm leading-relaxed text-slate-300 md:text-base">
-                          Analyzing your response...
-                        </p>
-                      ) : null}
-                      {analysisStatus === "done" ? (
-                        <div className="mt-2 rounded-lg bg-slate-800/50 p-4">
-                          <p className="whitespace-pre-line text-sm leading-relaxed text-slate-200 md:text-base">
-                            {feedback}
-                          </p>
-                        </div>
-                      ) : null}
-                      {analysisStatus === "error" ? (
-                        <p className="mt-2 text-xs text-slate-400 md:text-sm">
-                          Coaching feedback unavailable
-                        </p>
-                      ) : null}
                     </div>
                   ) : null}
+                  {analysisStatus === "error" ? (
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                      <p className="text-xs text-slate-400 md:text-sm">
+                        Coaching analysis unavailable for this session
+                      </p>
+                    </div>
+                  ) : null}
+                  {analysisStatus === "done" && analysisResult ? (
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                      <div className="grid gap-4 md:grid-cols-2 md:items-center">
+                        <div className="flex justify-center">
+                          <div className="relative h-36 w-36">
+                            <svg
+                              viewBox="0 0 120 120"
+                              className="h-full w-full -rotate-90 transform"
+                            >
+                              <circle
+                                cx="60"
+                                cy="60"
+                                r={ringRadius}
+                                strokeWidth="10"
+                                className="stroke-slate-700"
+                                fill="none"
+                              />
+                              <circle
+                                cx="60"
+                                cy="60"
+                                r={ringRadius}
+                                strokeWidth="10"
+                                className="stroke-sky-400 transition-all duration-500"
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeDasharray={ringCircumference}
+                                strokeDashoffset={ringOffset}
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                              <p className="text-3xl font-bold text-slate-100">
+                                {safeOverallScore.toFixed(1)}
+                              </p>
+                              <p className="text-xs uppercase tracking-wide text-slate-400">
+                                out of 10
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="h-56 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RadarChart data={radarData}>
+                              <PolarGrid stroke="rgba(148, 163, 184, 0.2)" />
+                              <PolarAngleAxis
+                                dataKey="axis"
+                                tick={{ fill: "#cbd5e1", fontSize: 12 }}
+                              />
+                              <PolarRadiusAxis
+                                domain={[0, 10]}
+                                tick={{ fill: "#94a3b8", fontSize: 10 }}
+                                axisLine={false}
+                              />
+                              <Radar
+                                dataKey="score"
+                                stroke="#38bdf8"
+                                fill="#0ea5e9"
+                                fillOpacity={0.3}
+                              />
+                            </RadarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  {analysisStatus === "done" && analysisResult ? (
+                    <p className="text-sm leading-relaxed text-slate-300 md:text-base">
+                      {analysisResult.summary}
+                    </p>
+                  ) : null}
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      Transcript
+                    </p>
+                    <div className="mt-2 text-sm leading-relaxed text-slate-200 md:text-base lg:text-lg">
+                      {transcriptionStatus === "transcribing" ? (
+                        <span className="animate-pulse text-slate-300">
+                          Transcribing your audio...
+                        </span>
+                      ) : (
+                        <>
+                          {transcriptionStatus === "error" ? (
+                            <span className="mb-1 block text-xs text-amber-300 md:text-sm">
+                              Transcription unavailable, showing live preview
+                            </span>
+                          ) : null}
+                          {finalTranscript ? (
+                            transcriptSentences.map((sentence, index) => {
+                              const normalized = normalizeSentence(sentence);
+                              const matchingTip = tipBySentence.get(normalized);
+                              const sentenceParts = highlightFillerParts(sentence);
+
+                              if (matchingTip) {
+                                return (
+                                  <div
+                                    key={`${normalized}-${index}`}
+                                    className="my-1 block border-l-4 border-sky-400 bg-sky-500/20 px-2"
+                                  >
+                                    <span>
+                                      {sentenceParts.map((part, partIndex) =>
+                                        part.isFiller ? (
+                                          <span
+                                            key={`${part.text}-${partIndex}`}
+                                            className="rounded bg-amber-500/20 px-1 text-amber-200"
+                                          >
+                                            {part.text}
+                                          </span>
+                                        ) : (
+                                          <span key={`${part.text}-${partIndex}`}>
+                                            {part.text}
+                                          </span>
+                                        )
+                                      )}
+                                    </span>
+                                    <p className="mt-1 text-sm italic text-sky-300">
+                                      {matchingTip.tip}
+                                    </p>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <span key={`${normalized}-${index}`}>
+                                  {sentenceParts.map((part, partIndex) =>
+                                    part.isFiller ? (
+                                      <span
+                                        key={`${part.text}-${partIndex}`}
+                                        className="rounded bg-amber-500/20 px-1 text-amber-200"
+                                      >
+                                        {part.text}
+                                      </span>
+                                    ) : (
+                                      <span key={`${part.text}-${partIndex}`}>{part.text}</span>
+                                    )
+                                  )}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <span className="text-slate-500">No transcript captured.</span>
+                          )}
+                          {interimTranscript ? (
+                            <span className="text-slate-400">{interimTranscript}</span>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {analysisStatus === "done" && analysisResult ? (
+                    <>
+                      {(hasPowerWords || hasWeakWords) && (
+                        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                          {hasPowerWords ? (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                Power words
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {analysisResult.powerWords.map((word) => (
+                                  <span
+                                    key={`power-${word}`}
+                                    className="rounded-full bg-emerald-500/20 px-3 py-1 text-sm text-emerald-200"
+                                  >
+                                    {word}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {hasWeakWords ? (
+                            <div className={hasPowerWords ? "mt-4" : undefined}>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                Weak words
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {analysisResult.weakWords.map((word) => (
+                                  <span
+                                    key={`weak-${word}`}
+                                    className="rounded-full bg-amber-500/20 px-3 py-1 text-sm text-amber-200"
+                                  >
+                                    {word}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-slate-200">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={
+                                analysisResult.structure.hasOpening
+                                  ? "text-emerald-300"
+                                  : "text-rose-300"
+                              }
+                            >
+                              {analysisResult.structure.hasOpening ? "✓" : "✕"}
+                            </span>
+                            Opening
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={
+                                analysisResult.structure.hasBody
+                                  ? "text-emerald-300"
+                                  : "text-rose-300"
+                              }
+                            >
+                              {analysisResult.structure.hasBody ? "✓" : "✕"}
+                            </span>
+                            Body
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={
+                                analysisResult.structure.hasClosing
+                                  ? "text-emerald-300"
+                                  : "text-rose-300"
+                              }
+                            >
+                              {analysisResult.structure.hasClosing ? "✓" : "✕"}
+                            </span>
+                            Closing
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {speechStats.map((stat) => (
+                        <div
+                          key={stat.label}
+                          className="rounded-lg bg-slate-800/50 p-2 text-center"
+                        >
+                          <p className="text-base font-semibold tabular-nums text-slate-100 md:text-lg">
+                            {stat.value}
+                          </p>
+                          <p className="mt-1 text-[0.6rem] font-semibold uppercase tracking-wide text-slate-400 md:text-xs">
+                            {stat.label}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </>
               )}
             </div>
