@@ -11,6 +11,7 @@ import {
 } from "recharts";
 
 type PromptCategory =
+  | "Topic"
   | "Personal"
   | "Opinion"
   | "Pitch"
@@ -18,7 +19,11 @@ type PromptCategory =
   | "Abstract"
   | "Silly";
 type FilterCategory = "All" | PromptCategory;
-type Prompt = { text: string; category: PromptCategory };
+type OpinionTake = "best" | "worst" | "medium" | "contrarian";
+type TakeFilter = OpinionTake | "random";
+type Prompt =
+  | { text: string; category: Exclude<PromptCategory, "Opinion"> }
+  | { text: string; category: "Opinion"; take: OpinionTake };
 type PrepMode = "3s" | "5s" | "10s" | "Manual";
 type TipCategory = "clarity" | "evidence" | "structure" | "conviction";
 type AnalysisResult = {
@@ -46,77 +51,339 @@ type AnalysisResult = {
 };
 
 const PROMPTS = [
-  { text: "Describe the first 15 minutes of your workday, including the tiny choices that set the tone.", category: "Personal" },
-  { text: "Tell the story of a room you still remember clearly, using three objects in it as anchors.", category: "Personal" },
-  { text: "Describe a meal someone made for you that felt like more than just food.", category: "Personal" },
-  { text: "Talk through a time you almost quit something but stayed for one more try.", category: "Personal" },
-  { text: "Describe the version of yourself your closest friend sees that strangers usually miss.", category: "Personal" },
-  { text: "Tell the story of a small purchase that made your daily life noticeably better.", category: "Personal" },
-  { text: "Describe a place in your neighborhood that you would miss if you moved tomorrow.", category: "Personal" },
-  { text: "Walk through your perfect evening after a difficult day, from the door opening onward.", category: "Personal" },
-  { text: "Tell the story of a compliment you still remember and why it landed.", category: "Personal" },
-  { text: "Describe one habit you inherited from your family, and whether you want to keep it.", category: "Personal" },
-  { text: "Argue that voice messages are warmer than texts, or make the opposite case.", category: "Opinion" },
-  { text: "Make the case that every calendar should have one meeting-free day each week.", category: "Opinion" },
-  { text: "Defend the idea that being early is overrated, or argue that it reveals character.", category: "Opinion" },
-  { text: "Argue that restaurants should have smaller menus, using one memorable example.", category: "Opinion" },
-  { text: "Make the case that everyone should keep one analog tool in their digital life.", category: "Opinion" },
-  { text: "Argue that silence in conversation is useful, or explain why it usually hurts the room.", category: "Opinion" },
-  { text: "Defend spending extra money on one everyday item, and explain where you would never splurge.", category: "Opinion" },
-  { text: "Make the case that people should reread favorite books instead of always chasing new ones.", category: "Opinion" },
-  { text: "Argue that a messy desk helps creativity, or that it quietly drains attention.", category: "Opinion" },
-  { text: "Defend the idea that walking is one of the best forms of problem solving.", category: "Opinion" },
-  { text: "Pitch a service that fixes one annoying part of your morning routine.", category: "Pitch" },
-  { text: "Convince a skeptical manager to fund a tiny tool that would save your team one hour a week.", category: "Pitch" },
-  { text: "Pitch yourself for a role where your unusual background is the main advantage.", category: "Pitch" },
-  { text: "Sell a local shop on an event that would bring new people through the door this weekend.", category: "Pitch" },
-  { text: "Pitch an app that helps people make better plans with friends without endless group chats.", category: "Pitch" },
-  { text: "Convince a busy parent to try a product that gives them 10 quiet minutes a day.", category: "Pitch" },
-  { text: "Pitch a newsletter someone would actually look forward to opening on Monday morning.", category: "Pitch" },
-  { text: "Sell your professional superpower to a client who has never worked with someone like you.", category: "Pitch" },
-  { text: "Pitch a low-cost improvement to your favorite public space, with a clear before-and-after.", category: "Pitch" },
-  { text: "Convince a friend to join a side project you would genuinely want to build.", category: "Pitch" },
-  { text: "Invent a museum exhibit built around one ordinary object from your kitchen.", category: "Creative" },
-  { text: "Design a restaurant where every course is based on a different weather forecast.", category: "Creative" },
-  { text: "Create a movie trailer for a mystery that happens entirely during a delayed flight.", category: "Creative" },
-  { text: "Describe a city where everyone has to swap jobs for one day each year.", category: "Creative" },
-  { text: "Invent a holiday that celebrates unfinished projects and explain its main ritual.", category: "Creative" },
-  { text: "Design a tiny home for someone who collects one very impractical thing.", category: "Creative" },
-  { text: "Create a podcast premise where the host interviews people about one object in their bag.", category: "Creative" },
-  { text: "Describe a theme park ride based on the feeling of checking your email.", category: "Creative" },
-  { text: "Invent a children's book character who solves problems by asking boring questions.", category: "Creative" },
-  { text: "Design a class that teaches adults how to be beginners again.", category: "Creative" },
-  { text: "What is the difference between being comfortable and being stuck?", category: "Abstract" },
-  { text: "Why do people trust a story faster than a statistic?", category: "Abstract" },
-  { text: "What makes advice feel generous instead of intrusive?", category: "Abstract" },
-  { text: "When does patience become avoidance?", category: "Abstract" },
-  { text: "What is the difference between taste and judgment?", category: "Abstract" },
-  { text: "Why do small rituals make ordinary days feel more meaningful?", category: "Abstract" },
-  { text: "What does it mean to be reliable without becoming predictable?", category: "Abstract" },
-  { text: "Why is starting often harder than continuing?", category: "Abstract" },
-  { text: "What is the difference between privacy and secrecy?", category: "Abstract" },
-  { text: "When does ambition make life bigger, and when does it make life smaller?", category: "Abstract" },
-  { text: "Convince me that soup is just a drink with confidence.", category: "Silly" },
-  { text: "Explain why pigeons would be excellent city council members.", category: "Silly" },
-  { text: "Describe the group chat your houseplants would start about you.", category: "Silly" },
-  { text: "Make the case that socks should have biographies printed on the package.", category: "Silly" },
-  { text: "Pitch a luxury spa day designed specifically for tired office chairs.", category: "Silly" },
-  { text: "Explain what cats would put on their resumes if they had to get jobs.", category: "Silly" },
-  { text: "Describe a cooking show where the contestants are all raccoons with strong opinions.", category: "Silly" },
-  { text: "Convince a jury that the missing TV remote is innocent.", category: "Silly" },
-  { text: "Give a dramatic awards speech for the best snack in your pantry.", category: "Silly" },
-  { text: "Describe what elevators gossip about after everyone leaves the building.", category: "Silly" },
+  { text: "Awkward silences", category: "Topic" },
+  { text: "The word 'later'", category: "Topic" },
+  { text: "Reinventing yourself", category: "Topic" },
+  { text: "Sincerity", category: "Topic" },
+  { text: "Confidence vs. arrogance", category: "Topic" },
+  { text: "Micro-decisions", category: "Topic" },
+  { text: "First impressions", category: "Topic" },
+  { text: "Solitude", category: "Topic" },
+  { text: "Routine", category: "Topic" },
+  { text: "Overdelivering", category: "Topic" },
+  { text: "Boredom", category: "Topic" },
+  { text: "Why people give advice", category: "Topic" },
+  {
+    text: "Argue hybrid work is the optimal model for most knowledge teams.",
+    category: "Opinion",
+    take: "best",
+  },
+  {
+    text: "Argue managers should share written expectations before every project kickoff.",
+    category: "Opinion",
+    take: "best",
+  },
+  {
+    text: "Argue every student should learn public speaking before graduation.",
+    category: "Opinion",
+    take: "best",
+  },
+  {
+    text: "Argue companies should budget for deep-work blocks, not just meetings.",
+    category: "Opinion",
+    take: "best",
+  },
+  {
+    text: "Argue there should be no meeting-free days, ever.",
+    category: "Opinion",
+    take: "worst",
+  },
+  {
+    text: "Argue all office chairs should be standing-only to build character.",
+    category: "Opinion",
+    take: "worst",
+  },
+  {
+    text: "Argue adults should lose internet access after 9 p.m. on weekdays.",
+    category: "Opinion",
+    take: "worst",
+  },
+  {
+    text: "Argue every team decision should be made by the loudest person in the room.",
+    category: "Opinion",
+    take: "worst",
+  },
+  {
+    text: "Argue procrastination is sometimes a feature, not a bug.",
+    category: "Opinion",
+    take: "medium",
+  },
+  {
+    text: "Argue social media is morally neutral; outcomes depend on how people use it.",
+    category: "Opinion",
+    take: "medium",
+  },
+  {
+    text: "Argue strict routines help creativity for some people and kill it for others.",
+    category: "Opinion",
+    take: "medium",
+  },
+  {
+    text: "Argue remote work improves focus but can quietly weaken mentorship.",
+    category: "Opinion",
+    take: "medium",
+  },
+  {
+    text: "Argue boredom is essential to a good life.",
+    category: "Opinion",
+    take: "contrarian",
+  },
+  {
+    text: "Argue silence often communicates more than speech.",
+    category: "Opinion",
+    take: "contrarian",
+  },
+  {
+    text: "Argue introverts often make the best leaders.",
+    category: "Opinion",
+    take: "contrarian",
+  },
+  {
+    text: "Argue small talk is an underrated professional skill.",
+    category: "Opinion",
+    take: "contrarian",
+  },
+  {
+    text: "Pitch a TV show that takes place entirely in an elevator.",
+    category: "Pitch",
+  },
+  {
+    text: "Pitch yourself for a job you are not technically qualified for.",
+    category: "Pitch",
+  },
+  {
+    text: "Pitch a startup solving a problem you personally run into every week.",
+    category: "Pitch",
+  },
+  {
+    text: "Convince your manager to let you work from another city for one month.",
+    category: "Pitch",
+  },
+  {
+    text: "Pitch a paid service that helps roommates split chores without arguments.",
+    category: "Pitch",
+  },
+  {
+    text: "Pitch a feature that would make your favorite app impossible to quit.",
+    category: "Pitch",
+  },
+  {
+    text: "Sell a local bookstore on hosting one event that doubles foot traffic.",
+    category: "Pitch",
+  },
+  {
+    text: "Pitch a neighborhood subscription that makes daily errands easier.",
+    category: "Pitch",
+  },
+  {
+    text: "Pitch a podcast format that turns boring meetings into entertainment.",
+    category: "Pitch",
+  },
+  {
+    text: "Convince a skeptical friend to join a side project this weekend.",
+    category: "Pitch",
+  },
+  {
+    text: "Walk through what you do in the first 10 minutes after waking up.",
+    category: "Personal",
+  },
+  {
+    text: "Tell the story of a friendship that changed how you see yourself.",
+    category: "Personal",
+  },
+  {
+    text: "Describe a moment from childhood that still affects your decisions.",
+    category: "Personal",
+  },
+  {
+    text: "Tell the story of a tiny risk that paid off.",
+    category: "Personal",
+  },
+  {
+    text: "Describe a routine you outgrew and what replaced it.",
+    category: "Personal",
+  },
+  {
+    text: "Tell the story of a time you misread a room and recovered.",
+    category: "Personal",
+  },
+  {
+    text: "Describe a compliment you did not expect but never forgot.",
+    category: "Personal",
+  },
+  {
+    text: "Walk through a decision you made quickly but still trust.",
+    category: "Personal",
+  },
+  {
+    text: "Describe a place you return to when you need to reset.",
+    category: "Personal",
+  },
+  {
+    text: "Tell the story of a project you almost abandoned too early.",
+    category: "Personal",
+  },
+  {
+    text: "Design a holiday for something humans rarely celebrate.",
+    category: "Creative",
+  },
+  {
+    text: "Invent a sport that could only exist in zero gravity.",
+    category: "Creative",
+  },
+  {
+    text: "Describe the most visited museum exhibit of the year 2125.",
+    category: "Creative",
+  },
+  {
+    text: "Create a city rule that sounds strange but makes life better.",
+    category: "Creative",
+  },
+  {
+    text: "Invent a restaurant where the menu changes with your mood.",
+    category: "Creative",
+  },
+  {
+    text: "Design a classroom that makes adults feel curious again.",
+    category: "Creative",
+  },
+  {
+    text: "Imagine a phone feature people would call magic in 20 years.",
+    category: "Creative",
+  },
+  {
+    text: "Create a new genre of party that does not involve music.",
+    category: "Creative",
+  },
+  {
+    text: "Invent an app that helps strangers collaborate in five minutes.",
+    category: "Creative",
+  },
+  {
+    text: "Describe a playground built specifically for stressed adults.",
+    category: "Creative",
+  },
+  {
+    text: "Convince me hot dogs are definitely sandwiches.",
+    category: "Silly",
+  },
+  {
+    text: "Describe what dogs say at a bar after the humans leave.",
+    category: "Silly",
+  },
+  {
+    text: "Defend pigeons as the most underrated animal in any city.",
+    category: "Silly",
+  },
+  {
+    text: "Argue your laptop charger has a dramatic personality.",
+    category: "Silly",
+  },
+  {
+    text: "Pitch a luxury spa built exclusively for tired backpacks.",
+    category: "Silly",
+  },
+  {
+    text: "Convince a jury the missing sock is innocent.",
+    category: "Silly",
+  },
+  {
+    text: "Explain how elevators secretly rank every passenger.",
+    category: "Silly",
+  },
+  {
+    text: "Give an acceptance speech for best snack in your kitchen.",
+    category: "Silly",
+  },
+  {
+    text: "Describe a reality show where houseplants review their owners.",
+    category: "Silly",
+  },
+  {
+    text: "Argue cereal should be eaten with chopsticks for better pacing.",
+    category: "Silly",
+  },
+  {
+    text: "What is the difference between confidence and arrogance?",
+    category: "Abstract",
+  },
+  {
+    text: "Why do humans tell stories before they trust data?",
+    category: "Abstract",
+  },
+  {
+    text: "Can taste be taught, or only developed?",
+    category: "Abstract",
+  },
+  {
+    text: "When does patience become avoidance?",
+    category: "Abstract",
+  },
+  {
+    text: "Why does certainty sound persuasive even when it is wrong?",
+    category: "Abstract",
+  },
+  {
+    text: "What makes advice feel generous instead of intrusive?",
+    category: "Abstract",
+  },
+  {
+    text: "Is consistency a virtue or just social predictability?",
+    category: "Abstract",
+  },
+  {
+    text: "When is ambition expansive, and when is it self-erasing?",
+    category: "Abstract",
+  },
+  {
+    text: "What turns experience into wisdom instead of just memory?",
+    category: "Abstract",
+  },
+  {
+    text: "Why do people confuse urgency with importance?",
+    category: "Abstract",
+  },
 ] satisfies Prompt[];
 
 const CATEGORIES: FilterCategory[] = [
   "All",
-  "Personal",
+  "Topic",
   "Opinion",
   "Pitch",
+  "Personal",
   "Creative",
-  "Abstract",
   "Silly",
+  "Abstract",
 ];
+const TAKE_OPTIONS: { value: TakeFilter; label: string }[] = [
+  { value: "best", label: "Best" },
+  { value: "worst", label: "Worst" },
+  { value: "medium", label: "Medium" },
+  { value: "contrarian", label: "Contrarian" },
+  { value: "random", label: "Random" },
+];
+
+const isOpinionPrompt = (prompt: Prompt): prompt is Extract<Prompt, { category: "Opinion" }> =>
+  prompt.category === "Opinion";
+
+const getPromptsForSelection = (
+  category: FilterCategory,
+  selectedTake: TakeFilter
+) => {
+  if (category === "All") {
+    return PROMPTS;
+  }
+  if (category !== "Opinion") {
+    return PROMPTS.filter((prompt) => prompt.category === category);
+  }
+  return PROMPTS.filter((prompt) =>
+    isOpinionPrompt(prompt) &&
+    (selectedTake === "random" || prompt.take === selectedTake)
+  );
+};
+
+const formatTakeLabel = (take: OpinionTake) =>
+  take.charAt(0).toUpperCase() + take.slice(1);
 
 const TIMER_DURATION = 60;
 const PREP_OPTIONS: PrepMode[] = ["3s", "5s", "10s", "Manual"];
@@ -262,6 +529,7 @@ const getSpeechRecognitionConstructor = () => {
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState<FilterCategory>("All");
+  const [selectedTake, setSelectedTake] = useState<TakeFilter>("random");
   const [currentPrompt, setCurrentPrompt] = useState<Prompt | null>(null);
   const [isPromptVisible, setIsPromptVisible] = useState(true);
   const [prepMode, setPrepMode] = useState<PrepMode>("3s");
@@ -333,10 +601,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const filteredPrompts =
-      activeCategory === "All"
-        ? PROMPTS
-        : PROMPTS.filter((prompt) => prompt.category === activeCategory);
+    const filteredPrompts = getPromptsForSelection(activeCategory, selectedTake);
 
     setUnusedPrompts(shuffle(filteredPrompts));
     setCurrentPrompt(null);
@@ -369,7 +634,7 @@ export default function Home() {
     mediaRecorderRef.current = null;
     audioChunksRef.current = [];
     setAudioUrl(null);
-  }, [activeCategory]);
+  }, [activeCategory, selectedTake]);
 
   useEffect(() => {
     if (!hasMountedPrepModeRef.current) {
@@ -511,10 +776,7 @@ export default function Home() {
       return;
     }
 
-    const filteredPrompts =
-      activeCategory === "All"
-        ? PROMPTS
-        : PROMPTS.filter((prompt) => prompt.category === activeCategory);
+    const filteredPrompts = getPromptsForSelection(activeCategory, selectedTake);
     if (filteredPrompts.length === 0) {
       return;
     }
@@ -1012,6 +1274,7 @@ export default function Home() {
                   type="button"
                   onClick={() => {
                     if (!isActive) {
+                      setSelectedTake("random");
                       setActiveCategory(category);
                     }
                   }}
@@ -1027,6 +1290,34 @@ export default function Home() {
             })}
           </div>
         </div>
+        {activeCategory === "Opinion" ? (
+          <div className="mx-auto mt-3 flex min-h-12 w-full max-w-md flex-wrap items-center justify-center gap-2 text-sm md:max-w-xl md:text-base lg:max-w-2xl">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Take
+            </span>
+            {TAKE_OPTIONS.map((takeOption) => {
+              const isActive = selectedTake === takeOption.value;
+              return (
+                <button
+                  key={takeOption.value}
+                  type="button"
+                  onClick={() => {
+                    if (!isActive) {
+                      setSelectedTake(takeOption.value);
+                    }
+                  }}
+                  className={`cursor-pointer rounded-full px-3 py-1.5 text-sm transition-all duration-150 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-4 md:py-2 md:text-base ${
+                    isActive
+                      ? "bg-sky-500 font-semibold text-slate-950 shadow-md shadow-sky-500/20 hover:scale-[1.02] hover:bg-sky-400 focus-visible:ring-sky-300"
+                      : "bg-slate-800 font-medium text-slate-400 hover:scale-[1.02] hover:bg-slate-700 hover:text-slate-200 hover:shadow-md hover:shadow-slate-950/20 focus-visible:ring-slate-500"
+                  }`}
+                >
+                  {takeOption.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div className="mx-auto mt-6 flex h-16 w-full max-w-md items-center justify-center md:mt-8 md:h-20 md:max-w-xl lg:mt-8 lg:max-w-2xl">
           <button
@@ -1043,15 +1334,22 @@ export default function Home() {
         {/* Prompt card — single bordered div; text + padding only (timer/buttons/review are siblings below) */}
         <div className="mt-6 flex w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/70 p-5 backdrop-blur-sm md:mt-8 md:p-6 lg:mt-8">
           {currentPrompt ? (
-            <p
-              className={`text-xl font-medium leading-relaxed text-slate-100 transition-all duration-300 ease-out md:text-2xl ${
+            <div
+              className={`w-full text-center transition-all duration-300 ease-out ${
                 isPromptVisible
                   ? "translate-y-0 opacity-100"
                   : "translate-y-1 opacity-0"
               }`}
             >
-              {currentPrompt.text}
-            </p>
+              {isOpinionPrompt(currentPrompt) ? (
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-300">
+                  Take: {formatTakeLabel(currentPrompt.take)}
+                </p>
+              ) : null}
+              <p className="text-xl font-medium leading-relaxed text-slate-100 md:text-2xl">
+                {currentPrompt.text}
+              </p>
+            </div>
           ) : (
             <p className="text-base text-slate-400 md:text-lg">
               Your prompt will appear here.
@@ -1322,7 +1620,7 @@ export default function Home() {
                               />
                               <PolarRadiusAxis
                                 domain={[0, 10]}
-                                tick={{ fill: "#94a3b8", fontSize: 10 }}
+                                tick={false}
                                 axisLine={false}
                               />
                               <Radar
