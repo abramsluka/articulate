@@ -323,13 +323,6 @@ export default function PenSpeakingPage() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 md:px-6 md:py-10 lg:px-8 lg:py-12">
       <section className="mx-auto w-full max-w-3xl">
-        <header>
-          <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Pen Speaking</h1>
-          <p className="mt-3 text-base leading-relaxed text-slate-300 md:text-lg">
-            Read aloud with a pen between your teeth. The constraint forces clearer articulation.
-          </p>
-        </header>
-
         <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/50 p-5 md:p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">How to do it</h2>
           <ol className="mt-3 list-inside list-decimal space-y-2 text-sm leading-relaxed text-slate-200 md:text-base">

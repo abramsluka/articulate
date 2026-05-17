@@ -127,13 +127,6 @@ export default function DailyWarmUpPage() {
     return (
       <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 md:px-6 md:py-10 lg:px-8 lg:py-12">
         <section className="mx-auto w-full max-w-3xl">
-          <header>
-            <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Daily Warm-Up</h1>
-            <p className="mt-3 text-base leading-relaxed text-slate-300 md:text-lg">
-              Your {Math.round(TOTAL_WARM_UP_SECONDS / 60)}-minute speaking routine.
-            </p>
-          </header>
-
           <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-5 md:p-6">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Routine overview</h2>
             <ul className="mt-4 space-y-2">

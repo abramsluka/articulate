@@ -334,13 +334,6 @@ export default function TongueTwistersPage() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 md:px-6 md:py-10 lg:px-8 lg:py-12">
       <section className="mx-auto w-full max-w-3xl">
-        <header>
-          <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Tongue Twisters</h1>
-          <p className="mt-3 text-base leading-relaxed text-slate-300 md:text-lg">
-            Sharpen your diction with 3 reps of each twister.
-          </p>
-        </header>
-
         <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-6 md:p-8">
           <p className="text-center text-2xl font-semibold leading-relaxed text-sky-200 md:text-3xl">
             {currentTwister?.text ?? "No twister available."}
