@@ -6,6 +6,8 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Line,
+  LineChart,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -54,6 +56,77 @@ const AXIS_LABELS: Array<{ key: keyof OffTheCuffSession["axes"]; label: string }
   { key: "clarity", label: "Clarity" },
   { key: "fillerWords", label: "Fillers" },
 ];
+type ByModeChartPoint = {
+  order: number;
+};
+
+const MODE_SERIES = [
+  {
+    key: "offTheCuff",
+    mode: "off-the-cuff",
+    label: "Off The Cuff",
+    color: "#0ea5e9",
+    activeTextColor: "#e0f2fe",
+    activeStrokeColor: "#e0f2fe",
+  },
+  {
+    key: "tongueTwisters",
+    mode: "tongue-twisters",
+    label: "Tongue Twisters",
+    color: "#34d399",
+    activeTextColor: "#d1fae5",
+    activeStrokeColor: "#d1fae5",
+  },
+] as const satisfies ReadonlyArray<{
+  key: string;
+  mode: Session["mode"];
+  label: string;
+  color: string;
+  activeTextColor: string;
+  activeStrokeColor: string;
+}>;
+
+type ModeSeriesKey = (typeof MODE_SERIES)[number]["key"];
+type ByModeChartDataPoint = ByModeChartPoint & Record<ModeSeriesKey, number | null>;
+
+type ActiveDotProps = {
+  cx?: number;
+  cy?: number;
+  value?: number;
+  payload?: Record<string, number | string | null | undefined>;
+};
+
+const createInlineActiveDot = (
+  options: { color: string; textColor?: string; strokeColor?: string; radius?: number },
+  dataKey?: string
+) => {
+  const InlineActiveDot = (props: ActiveDotProps) => {
+    const { color, textColor = options.color, strokeColor = "#e2e8f0", radius = 4 } = options;
+    const { cx, cy, value, payload } = props;
+    if (typeof cx !== "number" || typeof cy !== "number") return null;
+
+    let score = typeof value === "number" ? value : undefined;
+    if (score === undefined && dataKey && typeof payload?.[dataKey] === "number") {
+      score = payload[dataKey] as number;
+    }
+    if (typeof score !== "number" || !Number.isFinite(score)) return null;
+
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={radius} fill={color} stroke={strokeColor} strokeWidth={1} />
+        <text x={cx} y={cy - 12} textAnchor="middle" fill={textColor} fontSize={12} fontWeight={600}>
+          {score.toFixed(1)}
+        </text>
+      </g>
+    );
+  };
+
+  InlineActiveDot.displayName = dataKey
+    ? `InlineActiveDot(${dataKey})`
+    : "InlineActiveDot";
+
+  return InlineActiveDot;
+};
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -248,6 +321,7 @@ export default function Home() {
     }
   }, [historySnapshot]);
   const [expandedSessionIds, setExpandedSessionIds] = useState<Record<string, boolean>>({});
+  const [chartMode, setChartMode] = useState<"combined" | "byMode">("combined");
 
   useEffect(() => {
     document.title = "Dashboard";
@@ -294,6 +368,33 @@ export default function Home() {
       score: Number(session.overallScore.toFixed(2)),
       label: formatSessionDate(session.timestamp),
     }));
+  }, [sessions]);
+  const byModeChartData = useMemo<ByModeChartDataPoint[]>(() => {
+    const scoresBySeries = MODE_SERIES.reduce(
+      (accumulator, series) => {
+        accumulator[series.key] = sessions
+          .filter((session) => session.mode === series.mode)
+          .slice(0, MAX_RECENT_SESSIONS)
+          .reverse()
+          .map((session) => Number(session.overallScore.toFixed(2)));
+        return accumulator;
+      },
+      {} as Record<ModeSeriesKey, number[]>
+    );
+
+    const maxLen = MODE_SERIES.reduce(
+      (maximum, series) => Math.max(maximum, scoresBySeries[series.key].length),
+      0
+    );
+    const data: ByModeChartDataPoint[] = [];
+    for (let index = 0; index < maxLen; index++) {
+      const point = { order: index + 1 } as ByModeChartDataPoint;
+      MODE_SERIES.forEach((series) => {
+        point[series.key] = scoresBySeries[series.key][index] ?? null;
+      });
+      data.push(point);
+    }
+    return data;
   }, [sessions]);
 
   const toggleExpanded = (sessionId: string) => {
@@ -438,76 +539,139 @@ export default function Home() {
             {sessions.length >= 2 ? (
               <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-4 md:p-5">
                 <h2 className="text-lg font-semibold text-slate-100">Score trend</h2>
+                <div className="mb-3 mt-4 inline-flex rounded-lg border border-slate-800 bg-slate-900/70 p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setChartMode("combined")}
+                    className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
+                      chartMode === "combined"
+                        ? "bg-slate-700 text-slate-100"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Combined
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChartMode("byMode")}
+                    className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
+                      chartMode === "byMode"
+                        ? "bg-slate-700 text-slate-100"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    By mode
+                  </button>
+                </div>
                 <div className="mt-4 h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                      <defs>
-                        <linearGradient id="scoreFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="4 4" />
-                      <XAxis
-                        dataKey="order"
-                        tick={{ fill: "#94a3b8", fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={{ stroke: "rgba(148, 163, 184, 0.3)" }}
-                        label={{
-                          value: "Session order (oldest to newest)",
-                          position: "insideBottom",
-                          offset: -5,
-                          fill: "#94a3b8",
-                          fontSize: 11,
-                        }}
-                      />
-                      <YAxis
-                        domain={[0, 10]}
-                        tick={{ fill: "#94a3b8", fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={{ stroke: "rgba(148, 163, 184, 0.3)" }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="score"
-                        stroke="#0ea5e9"
-                        fill="url(#scoreFill)"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={(props: { cx?: number; cy?: number; payload?: { score?: number } }) => {
-                          const { cx, cy, payload } = props;
-                          if (
-                            typeof cx !== "number" ||
-                            typeof cy !== "number" ||
-                            typeof payload?.score !== "number"
-                          ) {
-                            return null;
-                          }
-                          return (
-                            <g>
-                              <circle cx={cx} cy={cy} r={4} fill="#0ea5e9" stroke="#e0f2fe" strokeWidth={1} />
-                              <text x={cx} y={cy - 12} textAnchor="middle" fill="#e0f2fe" fontSize={12} fontWeight={600}>
-                                {payload.score.toFixed(1)}
-                              </text>
-                            </g>
-                          );
-                        }}
-                      />
-                    </AreaChart>
+                    {chartMode === "combined" ? (
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient id="scoreFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="4 4" />
+                        <XAxis
+                          dataKey="order"
+                          tick={{ fill: "#94a3b8", fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: "rgba(148, 163, 184, 0.3)" }}
+                          label={{
+                            value: "Session order (oldest to newest)",
+                            position: "insideBottom",
+                            offset: -5,
+                            fill: "#94a3b8",
+                            fontSize: 11,
+                          }}
+                        />
+                        <YAxis
+                          domain={[0, 10]}
+                          tick={{ fill: "#94a3b8", fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: "rgba(148, 163, 184, 0.3)" }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="score"
+                          stroke="#0ea5e9"
+                          fill="url(#scoreFill)"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={createInlineActiveDot(
+                            { color: "#0ea5e9", textColor: "#e0f2fe", strokeColor: "#e0f2fe" },
+                            "score"
+                          )}
+                        />
+                      </AreaChart>
+                    ) : (
+                      <LineChart data={byModeChartData}>
+                        <CartesianGrid stroke="rgba(148, 163, 184, 0.2)" strokeDasharray="4 4" />
+                        <XAxis
+                          dataKey="order"
+                          tick={{ fill: "#94a3b8", fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: "rgba(148, 163, 184, 0.3)" }}
+                          label={{
+                            value: "Session number (per mode)",
+                            position: "insideBottom",
+                            offset: -5,
+                            fill: "#94a3b8",
+                            fontSize: 11,
+                          }}
+                        />
+                        <YAxis
+                          domain={[0, 10]}
+                          tick={{ fill: "#94a3b8", fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: "rgba(148, 163, 184, 0.3)" }}
+                        />
+                        {MODE_SERIES.map((series) => (
+                          <Line
+                            key={series.key}
+                            type="monotone"
+                            dataKey={series.key}
+                            name={series.label}
+                            stroke={series.color}
+                            strokeWidth={2}
+                            connectNulls
+                            dot={{ r: 3, fill: series.color, stroke: series.color, strokeWidth: 0 }}
+                            activeDot={createInlineActiveDot(
+                              {
+                                color: series.color,
+                                textColor: series.activeTextColor,
+                                strokeColor: series.activeStrokeColor,
+                                radius: 5,
+                              },
+                              series.key
+                            )}
+                          />
+                        ))}
+                      </LineChart>
+                    )}
                   </ResponsiveContainer>
                 </div>
+                {chartMode === "byMode" ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {MODE_SERIES.map((series) => (
+                      <span
+                        key={series.key}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-xs text-slate-300"
+                      >
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: series.color }} />
+                        {series.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
             <div className="mt-8">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-100">Practice modes</h2>
-                <Link
-                  href="/off-the-cuff"
-                  className="rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                >
-                  Start a new session
-                </Link>
               </div>
               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                 {MODES.map((mode) => {
