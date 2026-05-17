@@ -64,7 +64,21 @@ export type PenSpeakingSession = {
   feedback: string;
 };
 
-export type Session = OffTheCuffSession | TongueTwisterSession | PenSpeakingSession;
+export type DailyWarmUpSession = {
+  mode: "daily-warm-up";
+  id: string;
+  timestamp: number;
+  durationSeconds: number;
+  stepsCompleted: number;
+  totalSteps: number;
+  overallScore: number;
+};
+
+export type Session =
+  | OffTheCuffSession
+  | TongueTwisterSession
+  | PenSpeakingSession
+  | DailyWarmUpSession;
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -192,11 +206,30 @@ export const parsePenSpeakingSession = (value: unknown): PenSpeakingSession | nu
   return data as PenSpeakingSession;
 };
 
+export const parseDailyWarmUpSession = (value: unknown): DailyWarmUpSession | null => {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Partial<DailyWarmUpSession>;
+  if (
+    data.mode !== "daily-warm-up" ||
+    typeof data.id !== "string" ||
+    !isFiniteNumber(data.timestamp) ||
+    !isFiniteNumber(data.durationSeconds) ||
+    !isFiniteNumber(data.stepsCompleted) ||
+    !isFiniteNumber(data.totalSteps) ||
+    !isFiniteNumber(data.overallScore)
+  ) {
+    return null;
+  }
+
+  return data as DailyWarmUpSession;
+};
+
 export const parseSession = (value: unknown): Session | null => {
   if (!value || typeof value !== "object") return null;
   const data = value as { mode?: unknown };
   const mode = data.mode;
   if (mode === "tongue-twisters") return parseTongueTwisterSession(value);
   if (mode === "pen-speaking") return parsePenSpeakingSession(value);
+  if (mode === "daily-warm-up") return parseDailyWarmUpSession(value);
   return parseOffTheCuffSession(value);
 };

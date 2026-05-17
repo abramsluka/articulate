@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import SpiderChart, { type SpiderAxis } from "./components/SpiderChart";
 import type {
+  DailyWarmUpSession,
   OffTheCuffSession,
   PenSpeakingSession,
   Session,
@@ -52,7 +53,7 @@ const MODES: ModeCard[] = [
     modeId: "daily-warm-up",
     title: "Daily Warm-Up",
     description: "10-minute voice routine",
-    comingSoon: true,
+    href: "/daily-warm-up",
   },
 ];
 
@@ -128,6 +129,15 @@ const MODE_SERIES = [
     legendDotClass: "bg-violet-400",
     activeTextColor: "#ede9fe",
     activeStrokeColor: "#ede9fe",
+  },
+  {
+    key: "dailyWarmUp",
+    mode: "daily-warm-up",
+    label: "Daily Warm-Up",
+    color: "#fbbf24",
+    legendDotClass: "bg-amber-300",
+    activeTextColor: "#fef3c7",
+    activeStrokeColor: "#fef3c7",
   },
 ] as const satisfies ReadonlyArray<{
   key: string;
@@ -227,6 +237,9 @@ const formatSessionDate = (timestamp: number) => {
   return `${get("weekday")}, ${get("month")} ${get("day")} · ${get("hour")}:${get("minute")} ${get("dayPeriod")}`;
 };
 
+const formatDuration = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+
 const getScoreClass = (score: number) => {
   if (score >= 7) return "bg-emerald-500/20 text-emerald-200";
   if (score >= 4) return "bg-amber-500/20 text-amber-200";
@@ -248,12 +261,14 @@ const getDifficultyClass = (difficulty: TongueTwisterSession["difficulty"] | Pen
 const getModeBadgeClass = (mode: Session["mode"]) => {
   if (mode === "off-the-cuff") return "bg-sky-500/20 text-sky-200";
   if (mode === "tongue-twisters") return "bg-emerald-500/20 text-emerald-200";
+  if (mode === "daily-warm-up") return "bg-amber-500/20 text-amber-200";
   return "bg-violet-500/20 text-violet-200";
 };
 
 const getModeLabel = (mode: Session["mode"]) => {
   if (mode === "off-the-cuff") return "Off The Cuff";
   if (mode === "tongue-twisters") return "Tongue Twisters";
+  if (mode === "daily-warm-up") return "Daily Warm-Up";
   return "Pen Speaking";
 };
 
@@ -912,6 +927,74 @@ export default function Home() {
                               </p>
                               <p className="mt-2 text-sm leading-relaxed text-slate-200">{session.feedback}</p>
                             </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  }
+
+                  if (session.mode === "daily-warm-up") {
+                    const warmUpSession = session as DailyWarmUpSession;
+                    return (
+                      <article
+                        key={warmUpSession.id}
+                        className="relative rounded-2xl border border-slate-800 bg-slate-900/50 p-5 transition-colors hover:bg-slate-900/70"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => deleteSession(warmUpSession.id)}
+                          className="absolute right-3 top-3 rounded-md px-2 py-1 text-sm text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                          aria-label="Delete session"
+                        >
+                          ×
+                        </button>
+
+                        <div className="flex items-start justify-between gap-3 pr-8">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm text-slate-300">
+                                {formatSessionDate(warmUpSession.timestamp)}
+                              </p>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getModeBadgeClass(
+                                  warmUpSession.mode
+                                )}`}
+                              >
+                                {getModeLabel(warmUpSession.mode)}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-sm leading-relaxed text-slate-300 md:text-base">
+                              10-minute speaking routine
+                            </p>
+                          </div>
+                          <div
+                            className={`shrink-0 rounded-full px-3 py-2 text-sm font-semibold tabular-nums ${getScoreClass(
+                              warmUpSession.overallScore
+                            )}`}
+                          >
+                            {warmUpSession.overallScore.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <p className="mt-4 text-xs text-slate-400 md:text-sm">
+                          {warmUpSession.stepsCompleted}/{warmUpSession.totalSteps} steps ·{" "}
+                          {formatDuration(warmUpSession.durationSeconds)}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(warmUpSession.id)}
+                          className="mt-4 rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        >
+                          {isExpanded ? "Hide details" : "Details"}
+                        </button>
+
+                        {isExpanded ? (
+                          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+                            <p className="text-sm leading-relaxed text-slate-200">
+                              Completed {warmUpSession.stepsCompleted} of {warmUpSession.totalSteps} steps in{" "}
+                              {formatDuration(warmUpSession.durationSeconds)}.
+                            </p>
                           </div>
                         ) : null}
                       </article>
