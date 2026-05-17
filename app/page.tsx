@@ -22,6 +22,7 @@ import type {
 import { parseSession } from "./types/session";
 
 type ModeCard = {
+  modeId: "off-the-cuff" | "tongue-twisters" | "pen-speaking" | "daily-warm-up";
   title: string;
   description: string;
   href?: string;
@@ -30,26 +31,60 @@ type ModeCard = {
 
 const MODES: ModeCard[] = [
   {
+    modeId: "off-the-cuff",
     title: "Off The Cuff",
     description: "Impromptu speaking practice",
     href: "/off-the-cuff",
   },
   {
+    modeId: "tongue-twisters",
     title: "Tongue Twisters",
     description: "Diction warm-ups",
     href: "/tongue-twisters",
   },
   {
+    modeId: "pen-speaking",
     title: "Pen Speaking",
     description: "Enunciation practice",
     href: "/pen-speaking",
   },
   {
+    modeId: "daily-warm-up",
     title: "Daily Warm-Up",
     description: "10-minute voice routine",
     comingSoon: true,
   },
 ];
+
+const MODE_CARD_STYLES: Record<
+  ModeCard["modeId"],
+  { border: string; glow: string; hoverBorder: string; focusRing: string }
+> = {
+  "off-the-cuff": {
+    border: "border-sky-500/70",
+    glow: "shadow-[0_0_30px_rgba(14,165,233,0.08)]",
+    hoverBorder: "hover:border-sky-400/70",
+    focusRing: "focus-visible:ring-sky-300",
+  },
+  "tongue-twisters": {
+    border: "border-emerald-500/70",
+    glow: "shadow-[0_0_30px_rgba(52,211,153,0.08)]",
+    hoverBorder: "hover:border-emerald-400/70",
+    focusRing: "focus-visible:ring-emerald-300",
+  },
+  "pen-speaking": {
+    border: "border-violet-500/70",
+    glow: "shadow-[0_0_30px_rgba(167,139,250,0.08)]",
+    hoverBorder: "hover:border-violet-400/70",
+    focusRing: "focus-visible:ring-violet-300",
+  },
+  "daily-warm-up": {
+    border: "border-amber-500/70",
+    glow: "shadow-[0_0_30px_rgba(251,191,36,0.08)]",
+    hoverBorder: "hover:border-amber-400/70",
+    focusRing: "focus-visible:ring-amber-300",
+  },
+};
 
 const SESSION_HISTORY_STORAGE_KEY = "articulate-history";
 const MAX_RECENT_SESSIONS = 30;
@@ -607,16 +642,12 @@ export default function Home() {
                   );
 
                   if (mode.href) {
-                    const isPenSpeakingCard = mode.href === "/pen-speaking";
+                    const cardStyles = MODE_CARD_STYLES[mode.modeId];
                     return (
                       <Link
                         key={mode.title}
                         href={mode.href}
-                        className={`rounded-2xl bg-slate-800/50 p-6 transition-all duration-150 ease-out hover:scale-[1.02] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
-                          isPenSpeakingCard
-                            ? "border border-violet-500/70 shadow-[0_0_30px_rgba(167,139,250,0.08)] focus-visible:ring-violet-300"
-                            : "border border-sky-500/70 shadow-[0_0_30px_rgba(14,165,233,0.08)] focus-visible:ring-sky-300"
-                        }`}
+                        className={`rounded-2xl border bg-slate-800/50 p-6 transition-all duration-150 ease-out hover:scale-[1.02] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${cardStyles.border} ${cardStyles.glow} ${cardStyles.hoverBorder} ${cardStyles.focusRing}`}
                       >
                         {cardContent}
                       </Link>
