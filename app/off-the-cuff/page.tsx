@@ -50,6 +50,33 @@ type AnalysisResult = {
   summary: string;
 };
 
+type Session = {
+  id: string;
+  timestamp: number;
+  mode: "off-the-cuff";
+  category: PromptCategory;
+  take?: string;
+  promptText: string;
+  transcript: string;
+  speakingDurationSeconds: number;
+  wordCount: number;
+  fillerCount: number;
+  wpm: number;
+  overallScore: number;
+  axes: {
+    pace: number;
+    evidence: number;
+    confidence: number;
+    clarity: number;
+    fillerWords: number;
+  };
+  powerWords: string[];
+  weakWords: string[];
+  structure: { hasOpening: boolean; hasBody: boolean; hasClosing: boolean };
+  summary: string;
+  sentenceTips: Array<{ sentenceText: string; tip: string; category: string }>;
+};
+
 const PROMPTS = [
   { text: "Awkward silences", category: "Topic" },
   { text: "The word 'later'", category: "Topic" },
@@ -387,6 +414,8 @@ const formatTakeLabel = (take: OpinionTake) =>
 
 const TIMER_DURATION = 60;
 const PREP_OPTIONS: PrepMode[] = ["3s", "5s", "10s", "Manual"];
+const SESSION_HISTORY_STORAGE_KEY = "articulate-history";
+const SESSION_HISTORY_LIMIT = 365;
 const FILLER_PATTERN =
   /\b(?:you\s+know|i\s+mean|kind\s+of|sort\s+of|so\s+um|and\s+like|actually|basically|literally|honestly|right|okay|well|like|um|uh|er|ah|so)\b/gi;
 const WORD_PATTERN = /\b[\w']+\b/g;
@@ -443,6 +472,11 @@ const normalizeSentence = (sentence: string) =>
 
 const splitTranscriptSentences = (text: string) =>
   text.match(/[^.!?]+[.!?]*\s*/g) ?? [];
+
+const countWords = (text: string) => text.match(WORD_PATTERN)?.length ?? 0;
+
+const countFillers = (text: string) =>
+  [...text.matchAll(new RegExp(FILLER_PATTERN.source, FILLER_PATTERN.flags))].length;
 
 const highlightFillerParts = (text: string) => {
   const parts: { text: string; isFiller: boolean }[] = [];
@@ -566,6 +600,7 @@ export default function Home() {
   const secondsLeftRef = useRef(TIMER_DURATION);
   const finalTranscriptRef = useRef("");
   const transcriptionRequestIdRef = useRef(0);
+  const savedSessionRequestIdsRef = useRef(new Set<number>());
 
   useEffect(() => {
     document.title = "Off The Cuff";
@@ -1018,6 +1053,58 @@ export default function Home() {
                 if (isAnalysisResult(analysisData)) {
                   setAnalysisResult(analysisData);
                   setAnalysisStatus("done");
+                  if (!savedSessionRequestIdsRef.current.has(requestId)) {
+                    savedSessionRequestIdsRef.current.add(requestId);
+                    try {
+                      const timestamp = Date.now();
+                      const speakingDurationSeconds = Math.max(
+                        1,
+                        reviewElapsedSeconds ??
+                          Math.max(0, Math.min(TIMER_DURATION, TIMER_DURATION - secondsLeftRef.current))
+                      );
+                      const wordCount = countWords(data.text);
+                      const fillerCount = countFillers(data.text);
+                      const wpm =
+                        speakingDurationSeconds > 0
+                          ? Math.round(wordCount / (speakingDurationSeconds / 60))
+                          : 0;
+                      const session: Session = {
+                        id:
+                          typeof crypto !== "undefined" && "randomUUID" in crypto
+                            ? crypto.randomUUID()
+                            : timestamp.toString(),
+                        timestamp,
+                        mode: "off-the-cuff",
+                        category: currentPrompt.category,
+                        take: isOpinionPrompt(currentPrompt)
+                          ? formatTakeLabel(currentPrompt.take)
+                          : undefined,
+                        promptText: currentPrompt.text,
+                        transcript: data.text,
+                        speakingDurationSeconds,
+                        wordCount,
+                        fillerCount,
+                        wpm,
+                        overallScore: analysisData.overallScore,
+                        axes: analysisData.axes,
+                        powerWords: analysisData.powerWords,
+                        weakWords: analysisData.weakWords,
+                        structure: analysisData.structure,
+                        summary: analysisData.summary,
+                        sentenceTips: analysisData.sentenceTips,
+                      };
+                      const existingRaw = localStorage.getItem(SESSION_HISTORY_STORAGE_KEY);
+                      const existingHistory = existingRaw ? (JSON.parse(existingRaw) as unknown) : [];
+                      const sessions = Array.isArray(existingHistory) ? existingHistory : [];
+                      const nextHistory = [session, ...sessions].slice(0, SESSION_HISTORY_LIMIT);
+                      localStorage.setItem(
+                        SESSION_HISTORY_STORAGE_KEY,
+                        JSON.stringify(nextHistory)
+                      );
+                    } catch (error) {
+                      console.error("Failed to persist session history", error);
+                    }
+                  }
                 } else {
                   setAnalysisResult(null);
                   setAnalysisStatus("error");
