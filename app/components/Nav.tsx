@@ -7,6 +7,7 @@ export default function Nav() {
   const pathname = usePathname();
   const isDashboardActive = pathname === "/";
   const isOffTheCuffActive = pathname === "/off-the-cuff";
+  const isTongueTwistersActive = pathname === "/tongue-twisters";
   const navLinkBaseClass =
     "rounded-md px-2.5 py-1 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900";
 
@@ -39,6 +40,16 @@ export default function Nav() {
             }`}
           >
             Off The Cuff
+          </Link>
+          <Link
+            href="/tongue-twisters"
+            className={`${navLinkBaseClass} ${
+              isTongueTwistersActive
+                ? "bg-sky-500/20 text-sky-300"
+                : "text-slate-300 hover:text-slate-100"
+            }`}
+          >
+            Tongue Twisters
           </Link>
         </div>
       </div>

@@ -9,6 +9,7 @@ import {
   RadarChart,
   ResponsiveContainer,
 } from "recharts";
+import type { OffTheCuffSession } from "../types/session";
 
 type PromptCategory =
   | "Topic"
@@ -48,33 +49,6 @@ type AnalysisResult = {
     hasClosing: boolean;
   };
   summary: string;
-};
-
-type Session = {
-  id: string;
-  timestamp: number;
-  mode: "off-the-cuff";
-  category: PromptCategory;
-  take?: string;
-  promptText: string;
-  transcript: string;
-  speakingDurationSeconds: number;
-  wordCount: number;
-  fillerCount: number;
-  wpm: number;
-  overallScore: number;
-  axes: {
-    pace: number;
-    evidence: number;
-    confidence: number;
-    clarity: number;
-    fillerWords: number;
-  };
-  powerWords: string[];
-  weakWords: string[];
-  structure: { hasOpening: boolean; hasBody: boolean; hasClosing: boolean };
-  summary: string;
-  sentenceTips: Array<{ sentenceText: string; tip: string; category: string }>;
 };
 
 const PROMPTS = [
@@ -1068,7 +1042,7 @@ export default function Home() {
                         speakingDurationSeconds > 0
                           ? Math.round(wordCount / (speakingDurationSeconds / 60))
                           : 0;
-                      const session: Session = {
+                      const session: OffTheCuffSession = {
                         id:
                           typeof crypto !== "undefined" && "randomUUID" in crypto
                             ? crypto.randomUUID()
