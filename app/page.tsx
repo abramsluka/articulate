@@ -13,7 +13,13 @@ import {
   YAxis,
 } from "recharts";
 import SpiderChart, { type SpiderAxis } from "./components/SpiderChart";
-import type { OffTheCuffSession, Session, TongueTwisterSession } from "./types/session";
+import type {
+  OffTheCuffSession,
+  PenSpeakingSession,
+  Session,
+  TongueTwisterSession,
+} from "./types/session";
+import { parseSession } from "./types/session";
 
 type ModeCard = {
   title: string;
@@ -36,7 +42,7 @@ const MODES: ModeCard[] = [
   {
     title: "Pen Speaking",
     description: "Enunciation practice",
-    comingSoon: true,
+    href: "/pen-speaking",
   },
   {
     title: "Daily Warm-Up",
@@ -66,6 +72,7 @@ const MODE_SERIES = [
     mode: "off-the-cuff",
     label: "Off The Cuff",
     color: "#0ea5e9",
+    legendDotClass: "bg-sky-400",
     activeTextColor: "#e0f2fe",
     activeStrokeColor: "#e0f2fe",
   },
@@ -74,14 +81,25 @@ const MODE_SERIES = [
     mode: "tongue-twisters",
     label: "Tongue Twisters",
     color: "#34d399",
+    legendDotClass: "bg-emerald-400",
     activeTextColor: "#d1fae5",
     activeStrokeColor: "#d1fae5",
+  },
+  {
+    key: "penSpeaking",
+    mode: "pen-speaking",
+    label: "Pen Speaking",
+    color: "#a78bfa",
+    legendDotClass: "bg-violet-400",
+    activeTextColor: "#ede9fe",
+    activeStrokeColor: "#ede9fe",
   },
 ] as const satisfies ReadonlyArray<{
   key: string;
   mode: Session["mode"];
   label: string;
   color: string;
+  legendDotClass: string;
   activeTextColor: string;
   activeStrokeColor: string;
 }>;
@@ -126,113 +144,6 @@ const createInlineActiveDot = (
     : "InlineActiveDot";
 
   return InlineActiveDot;
-};
-
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value);
-
-const parseOffTheCuffSession = (value: unknown): OffTheCuffSession | null => {
-  if (!value || typeof value !== "object") return null;
-  const data = value as Partial<OffTheCuffSession> & { mode?: unknown };
-  if (
-    typeof data.id !== "string" ||
-    !isFiniteNumber(data.timestamp) ||
-    (data.mode !== undefined && data.mode !== "off-the-cuff") ||
-    typeof data.category !== "string" ||
-    typeof data.promptText !== "string" ||
-    typeof data.transcript !== "string" ||
-    !isFiniteNumber(data.speakingDurationSeconds) ||
-    !isFiniteNumber(data.wordCount) ||
-    !isFiniteNumber(data.fillerCount) ||
-    !isFiniteNumber(data.wpm) ||
-    !isFiniteNumber(data.overallScore) ||
-    !data.axes ||
-    !isFiniteNumber(data.axes.pace) ||
-    !isFiniteNumber(data.axes.evidence) ||
-    !isFiniteNumber(data.axes.confidence) ||
-    !isFiniteNumber(data.axes.clarity) ||
-    !isFiniteNumber(data.axes.fillerWords) ||
-    !Array.isArray(data.powerWords) ||
-    !data.powerWords.every((word) => typeof word === "string") ||
-    !Array.isArray(data.weakWords) ||
-    !data.weakWords.every((word) => typeof word === "string") ||
-    !data.structure ||
-    typeof data.structure.hasOpening !== "boolean" ||
-    typeof data.structure.hasBody !== "boolean" ||
-    typeof data.structure.hasClosing !== "boolean" ||
-    typeof data.summary !== "string" ||
-    !Array.isArray(data.sentenceTips) ||
-    !data.sentenceTips.every(
-      (tip) =>
-        tip &&
-        typeof tip.sentenceText === "string" &&
-        typeof tip.tip === "string" &&
-        typeof tip.category === "string"
-    )
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    timestamp: data.timestamp,
-    mode: "off-the-cuff",
-    category: data.category,
-    take: typeof data.take === "string" ? data.take : undefined,
-    promptText: data.promptText,
-    transcript: data.transcript,
-    speakingDurationSeconds: data.speakingDurationSeconds,
-    wordCount: data.wordCount,
-    fillerCount: data.fillerCount,
-    wpm: data.wpm,
-    overallScore: data.overallScore,
-    axes: data.axes,
-    powerWords: data.powerWords,
-    weakWords: data.weakWords,
-    structure: data.structure,
-    summary: data.summary,
-    sentenceTips: data.sentenceTips,
-  };
-};
-
-const isTwisterDifficulty = (value: unknown): value is TongueTwisterSession["difficulty"] =>
-  value === "easy" || value === "medium" || value === "hard";
-
-const parseTongueTwisterSession = (value: unknown): TongueTwisterSession | null => {
-  if (!value || typeof value !== "object") return null;
-  const data = value as Partial<TongueTwisterSession>;
-  if (
-    data.mode !== "tongue-twisters" ||
-    typeof data.id !== "string" ||
-    !isFiniteNumber(data.timestamp) ||
-    typeof data.twisterId !== "string" ||
-    typeof data.twisterText !== "string" ||
-    !isTwisterDifficulty(data.difficulty) ||
-    typeof data.transcript !== "string" ||
-    !isFiniteNumber(data.durationSeconds) ||
-    !isFiniteNumber(data.overallScore) ||
-    !isFiniteNumber(data.accuracyScore) ||
-    !isFiniteNumber(data.speedScore) ||
-    !isFiniteNumber(data.clarityScore) ||
-    !isFiniteNumber(data.actualWpm) ||
-    !isFiniteNumber(data.targetWpm) ||
-    !Array.isArray(data.mispronouncedWords) ||
-    !data.mispronouncedWords.every((word) => typeof word === "string") ||
-    typeof data.feedback !== "string"
-  ) {
-    return null;
-  }
-
-  return data as TongueTwisterSession;
-};
-
-const parseSession = (value: unknown): Session | null => {
-  if (!value || typeof value !== "object") return null;
-  const data = value as { mode?: unknown };
-  const mode = data.mode ?? "off-the-cuff";
-  if (mode === "off-the-cuff") return parseOffTheCuffSession(value);
-  if (mode === "tongue-twisters") return parseTongueTwisterSession(value);
-  return null;
 };
 
 const writeSessionHistory = (sessions: Session[]) => {
@@ -293,17 +204,23 @@ const getScoreBandColor = (score: number) => {
   return { stroke: "#fb7185", glow: "drop-shadow(0 0 8px rgba(251, 113, 133, 0.45))" };
 };
 
-const getDifficultyClass = (difficulty: TongueTwisterSession["difficulty"]) => {
+const getDifficultyClass = (difficulty: TongueTwisterSession["difficulty"] | PenSpeakingSession["difficulty"]) => {
   if (difficulty === "easy") return "bg-emerald-500/20 text-emerald-200";
   if (difficulty === "medium") return "bg-amber-500/20 text-amber-200";
   return "bg-rose-500/20 text-rose-200";
 };
 
-const getModeBadgeClass = (mode: Session["mode"]) =>
-  mode === "off-the-cuff" ? "bg-sky-500/20 text-sky-200" : "bg-emerald-500/20 text-emerald-200";
+const getModeBadgeClass = (mode: Session["mode"]) => {
+  if (mode === "off-the-cuff") return "bg-sky-500/20 text-sky-200";
+  if (mode === "tongue-twisters") return "bg-emerald-500/20 text-emerald-200";
+  return "bg-violet-500/20 text-violet-200";
+};
 
-const getModeLabel = (mode: Session["mode"]) =>
-  mode === "off-the-cuff" ? "Off The Cuff" : "Tongue Twisters";
+const getModeLabel = (mode: Session["mode"]) => {
+  if (mode === "off-the-cuff") return "Off The Cuff";
+  if (mode === "tongue-twisters") return "Tongue Twisters";
+  return "Pen Speaking";
+};
 
 export default function Home() {
   const historySnapshot = useSyncExternalStore(
@@ -660,7 +577,7 @@ export default function Home() {
                         key={series.key}
                         className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-xs text-slate-300"
                       >
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: series.color }} />
+                        <span className={`h-2 w-2 rounded-full ${series.legendDotClass}`} />
                         {series.label}
                       </span>
                     ))}
@@ -690,11 +607,16 @@ export default function Home() {
                   );
 
                   if (mode.href) {
+                    const isPenSpeakingCard = mode.href === "/pen-speaking";
                     return (
                       <Link
                         key={mode.title}
                         href={mode.href}
-                        className="rounded-2xl border border-sky-500/70 bg-slate-800/50 p-6 shadow-[0_0_30px_rgba(14,165,233,0.08)] transition-all duration-150 ease-out hover:scale-[1.02] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        className={`rounded-2xl bg-slate-800/50 p-6 transition-all duration-150 ease-out hover:scale-[1.02] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+                          isPenSpeakingCard
+                            ? "border border-violet-500/70 shadow-[0_0_30px_rgba(167,139,250,0.08)] focus-visible:ring-violet-300"
+                            : "border border-sky-500/70 shadow-[0_0_30px_rgba(14,165,233,0.08)] focus-visible:ring-sky-300"
+                        }`}
                       >
                         {cardContent}
                       </Link>
@@ -847,6 +769,117 @@ export default function Home() {
                               ) : (
                                 <p className="mt-2 text-sm text-slate-400">No sentence tips.</p>
                               )}
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  }
+
+                  if (session.mode === "pen-speaking") {
+                    return (
+                      <article
+                        key={session.id}
+                        className="relative rounded-2xl border border-slate-800 bg-slate-900/50 p-5 transition-colors hover:bg-slate-900/70"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => deleteSession(session.id)}
+                          className="absolute right-3 top-3 rounded-md px-2 py-1 text-sm text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                          aria-label="Delete session"
+                        >
+                          ×
+                        </button>
+
+                        <div className="flex items-start justify-between gap-3 pr-8">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm text-slate-300">{formatSessionDate(session.timestamp)}</p>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getModeBadgeClass(
+                                  session.mode
+                                )}`}
+                              >
+                                {getModeLabel(session.mode)}
+                              </span>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${getDifficultyClass(
+                                  session.difficulty
+                                )}`}
+                              >
+                                {session.difficulty}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-sm leading-relaxed text-slate-400 md:text-base">
+                              {session.passageText}
+                            </p>
+                          </div>
+                          <div
+                            className={`shrink-0 rounded-full px-3 py-2 text-sm font-semibold tabular-nums ${getScoreClass(
+                              session.overallScore
+                            )}`}
+                          >
+                            {session.overallScore.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <p className="mt-4 text-xs text-slate-400 md:text-sm">
+                          Accuracy {session.accuracyScore.toFixed(1)} · Clarity {session.clarityScore.toFixed(1)} ·
+                          Coverage {session.coverageScore.toFixed(1)}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(session.id)}
+                          className="mt-4 rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:border-slate-500 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        >
+                          {isExpanded ? "Hide details" : "Details"}
+                        </button>
+
+                        {isExpanded ? (
+                          <div className="mt-4 space-y-4 rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                  Full passage
+                                </p>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-200">{session.passageText}</p>
+                              </div>
+                              <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                  Transcript
+                                </p>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
+                                  {session.transcript || "No transcript captured."}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                Mispronounced or skipped words
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {session.mispronouncedWords.length ? (
+                                  session.mispronouncedWords.map((word) => (
+                                    <span
+                                      key={`${session.id}-${word}`}
+                                      className="rounded-full bg-rose-500/20 px-3 py-1 text-sm text-rose-200"
+                                    >
+                                      {word}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-sm text-slate-400">None.</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                Feedback
+                              </p>
+                              <p className="mt-2 text-sm leading-relaxed text-slate-200">{session.feedback}</p>
                             </div>
                           </div>
                         ) : null}
