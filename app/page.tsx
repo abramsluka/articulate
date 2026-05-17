@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import SpiderChart, { type SpiderAxis } from "./components/SpiderChart";
 
 type Session = {
   id: string;
@@ -70,6 +71,15 @@ const MODES: ModeCard[] = [
 
 const SESSION_HISTORY_STORAGE_KEY = "articulate-history";
 const MAX_RECENT_SESSIONS = 30;
+const RING_RADIUS = 42;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+const AXIS_LABELS: Array<{ key: keyof Session["axes"]; label: string }> = [
+  { key: "pace", label: "Pace" },
+  { key: "evidence", label: "Evidence" },
+  { key: "confidence", label: "Confidence" },
+  { key: "clarity", label: "Clarity" },
+  { key: "fillerWords", label: "Fillers" },
+];
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -194,6 +204,25 @@ const getScoreClass = (score: number) => {
   return "bg-rose-500/20 text-rose-200";
 };
 
+const getScoreBandColor = (score: number) => {
+  if (score >= 7) {
+    return {
+      stroke: "#34d399",
+      glow: "drop-shadow(0 0 8px rgba(52, 211, 153, 0.45))",
+    };
+  }
+  if (score >= 4) {
+    return {
+      stroke: "#fbbf24",
+      glow: "drop-shadow(0 0 8px rgba(251, 191, 36, 0.45))",
+    };
+  }
+  return {
+    stroke: "#fb7185",
+    glow: "drop-shadow(0 0 8px rgba(251, 113, 133, 0.45))",
+  };
+};
+
 export default function Home() {
   const historySnapshot = useSyncExternalStore(
     subscribeToHistoryChanges,
@@ -235,6 +264,10 @@ export default function Home() {
         if (session.wordCount <= 0) return total;
         return total + (session.fillerCount / session.wordCount) * 100;
       }, 0) / totalSessions;
+    const averageAxes: SpiderAxis[] = AXIS_LABELS.map(({ key, label }) => ({
+      axis: label,
+      value: sessions.reduce((total, session) => total + session.axes[key], 0) / totalSessions,
+    }));
 
     return {
       totalSessions,
@@ -242,6 +275,7 @@ export default function Home() {
       bestScore,
       averageWpm,
       averageFillerPercent,
+      averageAxes,
     };
   }, [sessions]);
 
@@ -305,26 +339,84 @@ export default function Home() {
         ) : (
           <>
             {aggregateStats ? (
-              <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-4 md:p-5">
-                <div className="flex flex-wrap gap-2 md:gap-3">
+              <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-4 md:p-6">
+                <div className="grid gap-6 md:grid-cols-2 md:items-center">
+                  <div className="flex flex-col items-center justify-center">
+                    {(() => {
+                      const normalizedScore = Math.max(0, Math.min(aggregateStats.averageScore, 10));
+                      const progress = normalizedScore / 10;
+                      const dashOffset = RING_CIRCUMFERENCE * (1 - progress);
+                      const ringColor = getScoreBandColor(aggregateStats.averageScore);
+                      return (
+                        <>
+                          <div className="relative h-40 w-40 md:h-52 md:w-52">
+                            <svg viewBox="0 0 100 100" className="h-full w-full">
+                              <circle
+                                cx="50"
+                                cy="50"
+                                r={RING_RADIUS}
+                                fill="none"
+                                stroke="rgba(30, 41, 59, 1)"
+                                strokeWidth="14"
+                              />
+                              <circle
+                                cx="50"
+                                cy="50"
+                                r={RING_RADIUS}
+                                fill="none"
+                                stroke={ringColor.stroke}
+                                strokeWidth="14"
+                                strokeLinecap="round"
+                                strokeDasharray={RING_CIRCUMFERENCE}
+                                strokeDashoffset={dashOffset}
+                                transform="rotate(-90 50 50)"
+                                style={{
+                                  transition: "stroke-dashoffset 600ms ease-out",
+                                  filter: ringColor.glow,
+                                }}
+                              />
+                            </svg>
+                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                              <div className="flex items-end gap-1">
+                                <span className="text-5xl font-semibold tabular-nums text-slate-100 md:text-6xl">
+                                  {aggregateStats.averageScore.toFixed(1)}
+                                </span>
+                                <span className="pb-1 text-sm text-slate-400">/ 10</span>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Average Score
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  <div>
+                    <SpiderChart axes={aggregateStats.averageAxes} height={240} />
+                    <p className="mt-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-400 md:text-left">
+                      Average Profile
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-2 md:gap-3">
                   {[
-                    { label: "Total sessions", value: aggregateStats.totalSessions.toString() },
-                    { label: "Avg. score", value: aggregateStats.averageScore.toFixed(1) },
-                    { label: "Best score", value: aggregateStats.bestScore.toFixed(1) },
-                    { label: "Avg. WPM", value: Math.round(aggregateStats.averageWpm).toString() },
+                    { label: "Total Sessions", value: aggregateStats.totalSessions.toString() },
+                    { label: "Best Score", value: aggregateStats.bestScore.toFixed(1) },
+                    { label: "Avg WPM", value: Math.round(aggregateStats.averageWpm).toString() },
                     {
-                      label: "Avg. filler %",
+                      label: "Avg Filler %",
                       value: `${aggregateStats.averageFillerPercent.toFixed(1)}%`,
                     },
                   ].map((stat) => (
                     <div
                       key={stat.label}
-                      className="min-w-[9rem] flex-1 rounded-xl bg-slate-800/50 p-3 text-center"
+                      className="min-w-[8.5rem] flex-1 rounded-xl bg-slate-800/40 p-3 text-center"
                     >
-                      <p className="text-2xl font-semibold tabular-nums text-slate-100">
-                        {stat.value}
-                      </p>
-                      <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400 md:text-xs">
+                      <p className="text-xl font-semibold tabular-nums text-slate-200">{stat.value}</p>
+                      <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500 md:text-xs">
                         {stat.label}
                       </p>
                     </div>
@@ -469,6 +561,10 @@ export default function Home() {
                 {recentSessions.map((session) => {
                   const fillerPercent =
                     session.wordCount > 0 ? (session.fillerCount / session.wordCount) * 100 : 0;
+                  const sessionAxes: SpiderAxis[] = AXIS_LABELS.map(({ key, label }) => ({
+                    axis: label,
+                    value: session.axes[key],
+                  }));
                   const isExpanded = Boolean(expandedSessionIds[session.id]);
                   return (
                     <article
@@ -540,22 +636,25 @@ export default function Home() {
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                               Axis scores
                             </p>
-                            <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-200 sm:grid-cols-5">
-                              <span className="rounded-lg bg-slate-800/60 px-2 py-1">
-                                Pace: {session.axes.pace.toFixed(1)}
-                              </span>
-                              <span className="rounded-lg bg-slate-800/60 px-2 py-1">
-                                Evidence: {session.axes.evidence.toFixed(1)}
-                              </span>
-                              <span className="rounded-lg bg-slate-800/60 px-2 py-1">
-                                Confidence: {session.axes.confidence.toFixed(1)}
-                              </span>
-                              <span className="rounded-lg bg-slate-800/60 px-2 py-1">
-                                Clarity: {session.axes.clarity.toFixed(1)}
-                              </span>
-                              <span className="rounded-lg bg-slate-800/60 px-2 py-1">
-                                Fillers: {session.axes.fillerWords.toFixed(1)}
-                              </span>
+                            <div className="mt-3 grid gap-4 md:grid-cols-2 md:items-center">
+                              <SpiderChart axes={sessionAxes} height={200} />
+                              <div className="grid grid-cols-2 gap-2 text-sm text-slate-200 sm:grid-cols-3 md:grid-cols-2">
+                                <span className="rounded-lg bg-slate-800/60 px-2 py-1">
+                                  Pace: {session.axes.pace.toFixed(1)}
+                                </span>
+                                <span className="rounded-lg bg-slate-800/60 px-2 py-1">
+                                  Evidence: {session.axes.evidence.toFixed(1)}
+                                </span>
+                                <span className="rounded-lg bg-slate-800/60 px-2 py-1">
+                                  Confidence: {session.axes.confidence.toFixed(1)}
+                                </span>
+                                <span className="rounded-lg bg-slate-800/60 px-2 py-1">
+                                  Clarity: {session.axes.clarity.toFixed(1)}
+                                </span>
+                                <span className="rounded-lg bg-slate-800/60 px-2 py-1 sm:col-span-2 md:col-span-1">
+                                  Fillers: {session.axes.fillerWords.toFixed(1)}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
