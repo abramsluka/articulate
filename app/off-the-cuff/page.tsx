@@ -423,15 +423,6 @@ declare global {
   }
 }
 
-const shuffle = <T,>(items: T[]) => {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-};
-
 const appendTranscript = (existingText: string, nextText: string) => {
   const existing = existingText.trim();
   const next = nextText.trim();
@@ -539,13 +530,11 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState<FilterCategory>("All");
   const [selectedTake, setSelectedTake] = useState<TakeFilter>("random");
   const [currentPrompt, setCurrentPrompt] = useState<Prompt | null>(null);
+  const [isSpinning, setIsSpinning] = useState(false);
   const [isPromptVisible, setIsPromptVisible] = useState(true);
   const [prepMode, setPrepMode] = useState<PrepMode>("3s");
   const [prepCountdown, setPrepCountdown] = useState<number | null>(null);
   const [canStartCurrentPrompt, setCanStartCurrentPrompt] = useState(false);
-  const [unusedPrompts, setUnusedPrompts] = useState<Prompt[]>(() =>
-    shuffle(PROMPTS)
-  );
   const [secondsLeft, setSecondsLeft] = useState(TIMER_DURATION);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -570,6 +559,7 @@ export default function Home() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const discardRecordingOnStopRef = useRef(false);
+  const spinCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   const hasMountedPrepModeRef = useRef(false);
   const secondsLeftRef = useRef(TIMER_DURATION);
   const finalTranscriptRef = useRef("");
@@ -596,6 +586,7 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
+      spinCancelRef.current.cancelled = true;
       if (recognitionRef.current) {
         recognitionRef.current.stop();
         recognitionRef.current = null;
@@ -610,9 +601,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const filteredPrompts = getPromptsForSelection(activeCategory, selectedTake);
-
-    setUnusedPrompts(shuffle(filteredPrompts));
+    spinCancelRef.current.cancelled = true;
+    setIsSpinning(false);
     setCurrentPrompt(null);
     setPrepCountdown(null);
     setCanStartCurrentPrompt(false);
@@ -780,35 +770,55 @@ export default function Home() {
     });
   };
 
-  const pickPrompt = () => {
-    if (PROMPTS.length === 0) {
+  const getActivePromptPool = () =>
+    getPromptsForSelection(activeCategory, selectedTake);
+
+  const spinForPrompt = (onFinalPrompt?: (prompt: Prompt) => void) => {
+    const pool = getActivePromptPool();
+    if (!pool.length) {
       return;
     }
 
-    const filteredPrompts = getPromptsForSelection(activeCategory, selectedTake);
-    if (filteredPrompts.length === 0) {
-      return;
-    }
+    spinCancelRef.current.cancelled = true;
+    const cancelToken = { cancelled: false };
+    spinCancelRef.current = cancelToken;
 
-    let promptPool = unusedPrompts;
-    if (promptPool.length === 0) {
-      const refilledPool = shuffle(
-        currentPrompt
-          ? filteredPrompts.filter((prompt) => prompt.text !== currentPrompt.text)
-          : filteredPrompts
-      );
-      promptPool = refilledPool;
-    }
+    setIsSpinning(true);
 
-    const [nextPrompt, ...remainingPrompts] = promptPool;
-    if (!nextPrompt) {
-      return;
-    }
+    const totalDurationMs = 1500;
+    const startTime = performance.now();
+    let lastTickAt = 0;
+    let nextTickInterval = 50;
 
-    setCurrentPrompt(nextPrompt);
-    setUnusedPrompts(remainingPrompts);
-    setCanStartCurrentPrompt(false);
-    return nextPrompt;
+    const tick = (now: number) => {
+      if (cancelToken.cancelled) {
+        setIsSpinning(false);
+        return;
+      }
+
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / totalDurationMs);
+      nextTickInterval = 50 + Math.pow(progress, 2) * 200;
+
+      if (now - lastTickAt >= nextTickInterval) {
+        const randomPrompt = pool[Math.floor(Math.random() * pool.length)];
+        setCurrentPrompt(randomPrompt);
+        setCanStartCurrentPrompt(false);
+        lastTickAt = now;
+      }
+
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      const finalPrompt = pool[Math.floor(Math.random() * pool.length)];
+      setCurrentPrompt(finalPrompt);
+      setIsSpinning(false);
+      onFinalPrompt?.(finalPrompt);
+    };
+
+    requestAnimationFrame(tick);
   };
 
   const resetDuringRecording = () => {
@@ -852,8 +862,8 @@ export default function Home() {
       }
     }
 
-    const nextPrompt = pickPrompt();
-    if (!nextPrompt) {
+    const pool = getActivePromptPool();
+    if (!pool.length) {
       return;
     }
 
@@ -864,9 +874,11 @@ export default function Home() {
     setRecordingError("");
     setCanStartCurrentPrompt(false);
 
-    if (prepSeconds !== null) {
-      setPrepCountdown(prepSeconds);
-    }
+    spinForPrompt(() => {
+      if (prepSeconds !== null) {
+        setPrepCountdown(prepSeconds);
+      }
+    });
   };
 
   const startCurrentPromptForMode = async () => {
@@ -1387,14 +1399,26 @@ export default function Home() {
             onClick={() => {
               void preparePromptForMode();
             }}
-            className="cursor-pointer rounded-2xl bg-sky-500 px-6 py-3 text-base font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-7 md:py-3.5 md:text-lg"
+            disabled={isSpinning}
+            className={`rounded-2xl px-6 py-3 text-base font-semibold text-slate-950 shadow-lg transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-7 md:py-3.5 md:text-lg ${
+              isSpinning
+                ? "cursor-not-allowed bg-sky-500/70 shadow-sky-500/20"
+                : "cursor-pointer bg-sky-500 shadow-sky-500/30 hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:ring-sky-300"
+            }`}
           >
-            Give me a prompt
+            {isSpinning ? "Spinning..." : "Give me a prompt"}
           </button>
         </div>
 
         {/* Prompt card — single bordered div; text + padding only (timer/buttons/review are siblings below) */}
-        <div className="mt-6 flex w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/70 p-5 backdrop-blur-sm md:mt-8 md:p-6 lg:mt-8">
+        <div
+          className={`mt-6 flex w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/70 p-5 backdrop-blur-sm transition-shadow duration-200 md:mt-8 md:p-6 lg:mt-8 ${
+            isSpinning ? "ring-2 ring-sky-500/40" : ""
+          }`}
+        >
+          <span className="sr-only" aria-live="polite" aria-atomic="true">
+            {!isSpinning && currentPrompt ? currentPrompt.text : ""}
+          </span>
           {currentPrompt ? (
             <div
               className={`w-full text-center transition-all duration-300 ease-out ${
@@ -1499,7 +1523,12 @@ export default function Home() {
             <button
               type="button"
               onClick={startRecording}
-              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
+              disabled={isSpinning}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3 ${
+                isSpinning
+                  ? "cursor-not-allowed bg-sky-500/70 shadow-sky-500/20"
+                  : "cursor-pointer bg-sky-500 shadow-sky-500/30 hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:ring-sky-300"
+              }`}
             >
               <span aria-hidden="true">🎤</span>
               Record
@@ -1515,7 +1544,12 @@ export default function Home() {
               onClick={() => {
                 void startCurrentPromptForMode();
               }}
-              className="flex cursor-pointer items-center gap-2 rounded-full bg-sky-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3"
+              disabled={isSpinning}
+              className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-5 md:py-2.5 md:text-base lg:px-6 lg:py-3 ${
+                isSpinning
+                  ? "cursor-not-allowed bg-sky-500/70 shadow-sky-500/20"
+                  : "cursor-pointer bg-sky-500 shadow-sky-500/30 hover:scale-[1.02] hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/40 active:scale-[0.98] focus-visible:ring-sky-300"
+              }`}
             >
               Start
             </button>
