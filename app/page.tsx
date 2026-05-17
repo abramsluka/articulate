@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import SpiderChart, { type SpiderAxis } from "./components/SpiderChart";
+import { BADGES } from "./data/badges";
 import type {
   DailyWarmUpSession,
   OffTheCuffSession,
@@ -359,6 +360,15 @@ export default function Home() {
   );
   const recentSessions = sessions.slice(0, MAX_RECENT_SESSIONS);
   const streakStats = useMemo(() => computeStreak(sessions), [sessions]);
+  const longestStreak = streakStats.longestStreak;
+  const earnedBadgeIds = useMemo(() => {
+    return new Set(
+      BADGES
+        .filter((badge) => badge.isEarned(sessions, longestStreak))
+        .map((badge) => badge.id)
+    );
+  }, [sessions, longestStreak]);
+  const earnedCount = earnedBadgeIds.size;
 
   const aggregateStats = useMemo(() => {
     if (!sessions.length) return null;
@@ -443,6 +453,38 @@ export default function Home() {
     writeSessionHistory([]);
   };
 
+  const badgesSection = (
+    <section className="mt-10">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-100">Badges</h2>
+        <p className="text-sm font-medium text-slate-400">
+          {earnedCount} of {BADGES.length} earned
+        </p>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {BADGES.map((badge) => {
+          const isEarned = earnedBadgeIds.has(badge.id);
+          return (
+            <div
+              key={badge.id}
+              className={`group rounded-2xl border border-slate-800 bg-slate-900/50 p-4 text-center transition-opacity hover:opacity-100 ${
+                isEarned ? "opacity-100" : "opacity-40"
+              }`}
+            >
+              <div
+                className={`text-4xl ${isEarned ? "" : "grayscale"} transition-[filter] group-hover:grayscale-0`}
+              >
+                {badge.emoji}
+              </div>
+              <p className="mt-2 text-sm font-semibold text-slate-100">{badge.name}</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">{badge.description}</p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 md:px-6 md:py-10 lg:px-8 lg:py-12">
       <section className="mx-auto w-full max-w-6xl">
@@ -456,18 +498,21 @@ export default function Home() {
         </div>
 
         {!hasSessions ? (
-          <div className="mt-10 rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center">
-            <h2 className="text-2xl font-semibold text-slate-100">No sessions yet</h2>
-            <p className="mt-2 text-slate-300">
-              Complete your first speaking session to start tracking your progress.
-            </p>
-            <Link
-              href="/off-the-cuff"
-              className="mt-6 inline-flex rounded-xl bg-sky-500 px-5 py-2.5 font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-            >
-              Start your first session
-            </Link>
-          </div>
+          <>
+            <div className="mt-10 rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center">
+              <h2 className="text-2xl font-semibold text-slate-100">No sessions yet</h2>
+              <p className="mt-2 text-slate-300">
+                Complete your first speaking session to start tracking your progress.
+              </p>
+              <Link
+                href="/off-the-cuff"
+                className="mt-6 inline-flex rounded-xl bg-sky-500 px-5 py-2.5 font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              >
+                Start your first session
+              </Link>
+            </div>
+            {badgesSection}
+          </>
         ) : (
           <>
             {offTheCuffAggregate ? (
@@ -748,7 +793,9 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-8">
+            {badgesSection}
+
+            <div className="mt-10">
               <h2 className="text-lg font-semibold text-slate-100">Recent sessions</h2>
               <div className="mt-4 space-y-4">
                 {recentSessions.map((session) => {
