@@ -6,10 +6,6 @@ import { usePathname } from "next/navigation";
 export default function Nav() {
   const pathname = usePathname();
   const isDashboardActive = pathname === "/";
-  const isOffTheCuffActive = pathname === "/off-the-cuff";
-  const isTongueTwistersActive = pathname === "/tongue-twisters";
-  const isPenSpeakingActive = pathname === "/pen-speaking";
-  const isDailyWarmUpActive = pathname === "/daily-warm-up";
   const navLinkBaseClass =
     "rounded-md px-2.5 py-1 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900";
 
@@ -32,46 +28,6 @@ export default function Nav() {
             }`}
           >
             Dashboard
-          </Link>
-          <Link
-            href="/off-the-cuff"
-            className={`${navLinkBaseClass} ${
-              isOffTheCuffActive
-                ? "bg-sky-500/20 text-sky-300"
-                : "text-slate-300 hover:text-slate-100"
-            }`}
-          >
-            Off The Cuff
-          </Link>
-          <Link
-            href="/tongue-twisters"
-            className={`${navLinkBaseClass} ${
-              isTongueTwistersActive
-                ? "bg-sky-500/20 text-sky-300"
-                : "text-slate-300 hover:text-slate-100"
-            }`}
-          >
-            Tongue Twisters
-          </Link>
-          <Link
-            href="/pen-speaking"
-            className={`${navLinkBaseClass} ${
-              isPenSpeakingActive
-                ? "bg-sky-500/20 text-sky-300"
-                : "text-slate-300 hover:text-slate-100"
-            }`}
-          >
-            Pen Speaking
-          </Link>
-          <Link
-            href="/daily-warm-up"
-            className={`${navLinkBaseClass} ${
-              isDailyWarmUpActive
-                ? "bg-sky-500/20 text-sky-300"
-                : "text-slate-300 hover:text-slate-100"
-            }`}
-          >
-            Daily Warm-Up
           </Link>
         </div>
       </div>

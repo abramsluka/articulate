@@ -1298,7 +1298,15 @@ export default function Home() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-6 text-slate-100 md:px-6 md:py-8 lg:px-8 lg:py-9">
       <section className="w-full max-w-md text-center md:max-w-xl lg:max-w-2xl xl:max-w-2xl">
-        <div className="mx-auto mt-5 flex min-h-12 w-full max-w-md flex-wrap items-center justify-center gap-2 text-sm md:mt-6 md:min-h-14 md:max-w-xl md:text-base lg:mt-8 lg:max-w-2xl">
+        <header className="mb-8 text-center md:mb-10">
+          <h1 className="text-4xl font-semibold tracking-tight text-slate-100 md:text-5xl">
+            Off The Cuff
+          </h1>
+          <p className="mt-3 text-base leading-relaxed text-slate-300 md:text-lg">
+            Impromptu speaking practice.
+          </p>
+        </header>
+        <div className="mx-auto flex min-h-12 w-full max-w-md flex-wrap items-center justify-center gap-2 text-sm md:min-h-14 md:max-w-xl md:text-base lg:max-w-2xl">
           {PREP_OPTIONS.map((modeOption) => {
             const isActive = modeOption === prepMode;
             return (
