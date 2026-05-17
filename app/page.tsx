@@ -272,6 +272,64 @@ const getModeLabel = (mode: Session["mode"]) => {
   return "Pen Speaking";
 };
 
+const toDayKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(
+    2,
+    "0"
+  )}`;
+
+const parseDayKey = (key: string) => {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const computeStreak = (sessions: Session[]) => {
+  if (sessions.length === 0) {
+    return { currentStreak: 0, longestStreak: 0, practicedToday: false };
+  }
+
+  const daysWithSessions = new Set(
+    sessions.map((session) => {
+      const day = new Date(session.timestamp);
+      return toDayKey(day);
+    })
+  );
+  const today = new Date();
+  const todayKey = toDayKey(today);
+  const practicedToday = daysWithSessions.has(todayKey);
+
+  let currentStreak = 0;
+  const cursor = new Date(today);
+  if (!practicedToday) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  while (true) {
+    const dayKey = toDayKey(cursor);
+    if (!daysWithSessions.has(dayKey)) break;
+    currentStreak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  const sortedDayKeys = [...daysWithSessions].sort();
+  let longestStreak = 0;
+  let run = 0;
+  let previousKey: string | null = null;
+  for (const dayKey of sortedDayKeys) {
+    if (!previousKey) {
+      run = 1;
+    } else {
+      const previousDay = parseDayKey(previousKey);
+      previousDay.setDate(previousDay.getDate() + 1);
+      run = toDayKey(previousDay) === dayKey ? run + 1 : 1;
+    }
+    longestStreak = Math.max(longestStreak, run);
+    previousKey = dayKey;
+  }
+
+  return { currentStreak, longestStreak, practicedToday };
+};
+
 export default function Home() {
   const historySnapshot = useSyncExternalStore(
     subscribeToHistoryChanges,
@@ -300,6 +358,7 @@ export default function Home() {
     [sessions]
   );
   const recentSessions = sessions.slice(0, MAX_RECENT_SESSIONS);
+  const streakStats = useMemo(() => computeStreak(sessions), [sessions]);
 
   const aggregateStats = useMemo(() => {
     if (!sessions.length) return null;
@@ -483,19 +542,27 @@ export default function Home() {
               <div className="mt-6 flex flex-wrap gap-2 md:gap-3">
                 {[
                   { label: "Total Sessions", value: aggregateStats.totalSessions.toString() },
+                  {
+                    label: "Day streak",
+                    value: (
+                      <>
+                        {streakStats.currentStreak} <span aria-hidden="true">🔥</span>
+                      </>
+                    ),
+                    title: `Longest streak: ${streakStats.longestStreak} ${
+                      streakStats.longestStreak === 1 ? "day" : "days"
+                    }`,
+                  },
                   { label: "Best Score", value: aggregateStats.bestScore.toFixed(1) },
                   { label: "Avg Score", value: aggregateStats.averageScore.toFixed(1) },
-                  {
-                    label: "Avg WPM (Off The Cuff)",
-                    value: offTheCuffAggregate ? Math.round(offTheCuffAggregate.averageWpm).toString() : "—",
-                  },
                 ].map((stat) => (
                   <div
                     key={stat.label}
-                    className="min-w-[8.5rem] flex-1 rounded-xl bg-slate-800/40 p-3 text-center"
+                    title={stat.title}
+                    className="min-w-[9rem] flex-1 rounded-xl bg-slate-800/50 p-4 text-center"
                   >
-                    <p className="text-xl font-semibold tabular-nums text-slate-200">{stat.value}</p>
-                    <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500 md:text-xs">
+                    <p className="text-2xl font-semibold tabular-nums text-slate-100">{stat.value}</p>
+                    <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-400 md:text-xs">
                       {stat.label}
                     </p>
                   </div>
@@ -636,7 +703,7 @@ export default function Home() {
               </div>
             ) : null}
 
-            <div className="mt-8">
+            <div id="practice-modes" className="mt-8">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-100">Practice modes</h2>
               </div>
