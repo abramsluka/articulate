@@ -1,14 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
-  Radar,
-  RadarChart,
-  ResponsiveContainer,
-} from "recharts";
+import SpiderChart from "../components/SpiderChart";
 import type { OffTheCuffSession } from "../types/session";
 
 type PromptCategory =
@@ -1278,11 +1271,11 @@ export default function Home() {
   );
   const radarData = analysisResult
     ? [
-        { axis: "Pace", score: analysisResult.axes.pace },
-        { axis: "Evidence", score: analysisResult.axes.evidence },
-        { axis: "Confidence", score: analysisResult.axes.confidence },
-        { axis: "Clarity", score: analysisResult.axes.clarity },
-        { axis: "Fillers", score: analysisResult.axes.fillerWords },
+        { axis: "Pace", value: analysisResult.axes.pace },
+        { axis: "Evidence", value: analysisResult.axes.evidence },
+        { axis: "Confidence", value: analysisResult.axes.confidence },
+        { axis: "Clarity", value: analysisResult.axes.clarity },
+        { axis: "Fillers", value: analysisResult.axes.fillerWords },
       ]
     : [];
   const safeOverallScore = analysisResult
@@ -1672,27 +1665,8 @@ export default function Home() {
                             </div>
                           </div>
                         </div>
-                        <div className="h-56 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <RadarChart data={radarData}>
-                              <PolarGrid stroke="rgba(148, 163, 184, 0.2)" />
-                              <PolarAngleAxis
-                                dataKey="axis"
-                                tick={{ fill: "#cbd5e1", fontSize: 12 }}
-                              />
-                              <PolarRadiusAxis
-                                domain={[0, 10]}
-                                tick={false}
-                                axisLine={false}
-                              />
-                              <Radar
-                                dataKey="score"
-                                stroke="#38bdf8"
-                                fill="#0ea5e9"
-                                fillOpacity={0.3}
-                              />
-                            </RadarChart>
-                          </ResponsiveContainer>
+                        <div className="w-full">
+                          <SpiderChart axes={radarData} height={224} />
                         </div>
                       </div>
                     </div>
