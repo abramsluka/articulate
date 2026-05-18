@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import SpiderChart, { type SpiderAxis } from "./components/SpiderChart";
 import { BADGES } from "./data/badges";
+import { createSupabaseBrowserClient } from "./lib/supabase/client";
 import type {
   DailyWarmUpSession,
   OffTheCuffSession,
@@ -159,6 +160,11 @@ type ActiveDotProps = {
   value?: number;
   payload?: Record<string, number | string | null | undefined>;
 };
+
+type SupabaseStatus =
+  | { kind: "loading" }
+  | { kind: "connected" }
+  | { kind: "failed"; message: string };
 
 const createInlineActiveDot = (
   options: { color: string; textColor?: string; strokeColor?: string; radius?: number },
@@ -348,9 +354,36 @@ export default function Home() {
   }, [historySnapshot]);
   const [expandedSessionIds, setExpandedSessionIds] = useState<Record<string, boolean>>({});
   const [chartMode, setChartMode] = useState<"combined" | "byMode">("combined");
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus>({ kind: "loading" });
 
   useEffect(() => {
     document.title = "Dashboard";
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { error } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (error) {
+          setSupabaseStatus({ kind: "failed", message: error.message });
+        } else {
+          setSupabaseStatus({ kind: "connected" });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setSupabaseStatus({
+          kind: "failed",
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const hasSessions = sessions.length > 0;
@@ -488,6 +521,19 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 md:px-6 md:py-10 lg:px-8 lg:py-12">
       <section className="mx-auto w-full max-w-6xl">
+        <div className="mb-4">
+          {supabaseStatus.kind === "loading" ? (
+            <p className="text-xs text-slate-400">Checking Supabase...</p>
+          ) : supabaseStatus.kind === "connected" ? (
+            <p className="inline-block rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300">
+              ✓ Supabase connected
+            </p>
+          ) : (
+            <p className="inline-block rounded-lg bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300">
+              ✗ Supabase connection failed: {supabaseStatus.message}
+            </p>
+          )}
+        </div>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Dashboard</h1>
