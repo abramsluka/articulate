@@ -1,8 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SpiderChart from "../components/SpiderChart";
+import { saveSession } from "../lib/supabase/sessions";
 import type { OffTheCuffSession } from "../types/session";
+
+type SaveStatus =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved" }
+  | { kind: "requires-login" }
+  | { kind: "error"; message: string };
 
 type PromptCategory =
   | "Topic"
@@ -381,8 +390,6 @@ const formatTakeLabel = (take: OpinionTake) =>
 
 const TIMER_DURATION = 60;
 const PREP_OPTIONS: PrepMode[] = ["3s", "5s", "10s", "Manual"];
-const SESSION_HISTORY_STORAGE_KEY = "articulate-history";
-const SESSION_HISTORY_LIMIT = 365;
 const FILLER_PATTERN =
   /\b(?:you\s+know|i\s+mean|kind\s+of|sort\s+of|so\s+um|and\s+like|actually|basically|literally|honestly|right|okay|well|like|um|uh|er|ah|so)\b/gi;
 const WORD_PATTERN = /\b[\w']+\b/g;
@@ -567,7 +574,18 @@ export default function Home() {
   const secondsLeftRef = useRef(TIMER_DURATION);
   const finalTranscriptRef = useRef("");
   const transcriptionRequestIdRef = useRef(0);
-  const savedSessionRequestIdsRef = useRef(new Set<number>());
+  const [hasSaved, setHasSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
+
+  useEffect(() => {
+    if (saveStatus.kind !== "saved") return;
+    const timeoutId = window.setTimeout(() => {
+      setSaveStatus((current) => (current.kind === "saved" ? { kind: "idle" } : current));
+    }, 4000);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [saveStatus]);
 
   useEffect(() => {
     document.title = "Off The Cuff";
@@ -621,6 +639,8 @@ export default function Home() {
     setTranscriptionStatus("idle");
     setAnalysisStatus("idle");
     setAnalysisResult(null);
+    setHasSaved(false);
+    setSaveStatus({ kind: "idle" });
     transcriptionRequestIdRef.current += 1;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -764,6 +784,8 @@ export default function Home() {
     setTranscriptionStatus("idle");
     setAnalysisStatus("idle");
     setAnalysisResult(null);
+    setHasSaved(false);
+    setSaveStatus({ kind: "idle" });
     audioChunksRef.current = [];
     setAudioUrl((previousUrl) => {
       if (previousUrl) {
@@ -969,6 +991,8 @@ export default function Home() {
           setTranscriptionStatus("transcribing");
           setAnalysisStatus("idle");
           setAnalysisResult(null);
+          setHasSaved(false);
+          setSaveStatus({ kind: "idle" });
 
           const requestId = transcriptionRequestIdRef.current + 1;
           transcriptionRequestIdRef.current = requestId;
@@ -1020,56 +1044,54 @@ export default function Home() {
                 if (isAnalysisResult(analysisData)) {
                   setAnalysisResult(analysisData);
                   setAnalysisStatus("done");
-                  if (!savedSessionRequestIdsRef.current.has(requestId)) {
-                    savedSessionRequestIdsRef.current.add(requestId);
-                    try {
-                      const timestamp = Date.now();
-                      const speakingDurationSeconds = Math.max(
-                        1,
-                        reviewElapsedSeconds ??
-                          Math.max(0, Math.min(TIMER_DURATION, TIMER_DURATION - secondsLeftRef.current))
-                      );
-                      const wordCount = countWords(data.text);
-                      const fillerCount = countFillers(data.text);
-                      const wpm =
-                        speakingDurationSeconds > 0
-                          ? Math.round(wordCount / (speakingDurationSeconds / 60))
-                          : 0;
-                      const session: OffTheCuffSession = {
-                        id:
-                          typeof crypto !== "undefined" && "randomUUID" in crypto
-                            ? crypto.randomUUID()
-                            : timestamp.toString(),
-                        timestamp,
-                        mode: "off-the-cuff",
-                        category: currentPrompt.category,
-                        take: isOpinionPrompt(currentPrompt)
-                          ? formatTakeLabel(currentPrompt.take)
-                          : undefined,
-                        promptText: currentPrompt.text,
-                        transcript: data.text,
-                        speakingDurationSeconds,
-                        wordCount,
-                        fillerCount,
-                        wpm,
-                        overallScore: analysisData.overallScore,
-                        axes: analysisData.axes,
-                        powerWords: analysisData.powerWords,
-                        weakWords: analysisData.weakWords,
-                        structure: analysisData.structure,
-                        summary: analysisData.summary,
-                        sentenceTips: analysisData.sentenceTips,
-                      };
-                      const existingRaw = localStorage.getItem(SESSION_HISTORY_STORAGE_KEY);
-                      const existingHistory = existingRaw ? (JSON.parse(existingRaw) as unknown) : [];
-                      const sessions = Array.isArray(existingHistory) ? existingHistory : [];
-                      const nextHistory = [session, ...sessions].slice(0, SESSION_HISTORY_LIMIT);
-                      localStorage.setItem(
-                        SESSION_HISTORY_STORAGE_KEY,
-                        JSON.stringify(nextHistory)
-                      );
-                    } catch (error) {
-                      console.error("Failed to persist session history", error);
+                  if (!hasSaved) {
+                    const timestamp = Date.now();
+                    const speakingDurationSeconds = Math.max(
+                      1,
+                      reviewElapsedSeconds ??
+                        Math.max(0, Math.min(TIMER_DURATION, TIMER_DURATION - secondsLeftRef.current))
+                    );
+                    const wordCount = countWords(data.text);
+                    const fillerCount = countFillers(data.text);
+                    const wpm =
+                      speakingDurationSeconds > 0
+                        ? Math.round(wordCount / (speakingDurationSeconds / 60))
+                        : 0;
+                    const session: OffTheCuffSession = {
+                      id:
+                        typeof crypto !== "undefined" && "randomUUID" in crypto
+                          ? crypto.randomUUID()
+                          : timestamp.toString(),
+                      timestamp,
+                      mode: "off-the-cuff",
+                      category: currentPrompt.category,
+                      take: isOpinionPrompt(currentPrompt)
+                        ? formatTakeLabel(currentPrompt.take)
+                        : undefined,
+                      promptText: currentPrompt.text,
+                      transcript: data.text,
+                      speakingDurationSeconds,
+                      wordCount,
+                      fillerCount,
+                      wpm,
+                      overallScore: analysisData.overallScore,
+                      axes: analysisData.axes,
+                      powerWords: analysisData.powerWords,
+                      weakWords: analysisData.weakWords,
+                      structure: analysisData.structure,
+                      summary: analysisData.summary,
+                      sentenceTips: analysisData.sentenceTips,
+                    };
+                    setHasSaved(true);
+                    setSaveStatus({ kind: "saving" });
+                    const result = await saveSession(session);
+                    if (requestId !== transcriptionRequestIdRef.current) return;
+                    if (result.ok) {
+                      setSaveStatus({ kind: "saved" });
+                    } else if (result.requiresLogin) {
+                      setSaveStatus({ kind: "requires-login" });
+                    } else {
+                      setSaveStatus({ kind: "error", message: result.error });
                     }
                   }
                 } else {
@@ -1116,6 +1138,8 @@ export default function Home() {
       setTranscriptionStatus("idle");
       setAnalysisStatus("idle");
       setAnalysisResult(null);
+      setHasSaved(false);
+      setSaveStatus({ kind: "idle" });
       startRecognition();
       setRecordingError("");
       setHasRecording(false);
@@ -1675,6 +1699,24 @@ export default function Home() {
                     <p className="text-sm leading-relaxed text-slate-300 md:text-base">
                       {analysisResult.summary}
                     </p>
+                  ) : null}
+                  {saveStatus.kind === "saved" ? (
+                    <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-200">
+                      Saved to your account ✓
+                    </div>
+                  ) : null}
+                  {saveStatus.kind === "requires-login" ? (
+                    <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-100">
+                      Log in to save this session.{" "}
+                      <Link href="/login" className="font-semibold text-rose-50 underline underline-offset-4 hover:text-white">
+                        Log in
+                      </Link>
+                    </div>
+                  ) : null}
+                  {saveStatus.kind === "error" ? (
+                    <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-100">
+                      Couldn&apos;t save: {saveStatus.message}
+                    </div>
                   ) : null}
                   <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">

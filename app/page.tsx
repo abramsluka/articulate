@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -14,6 +14,13 @@ import {
 } from "recharts";
 import SpiderChart, { type SpiderAxis } from "./components/SpiderChart";
 import { BADGES } from "./data/badges";
+import { createSupabaseBrowserClient } from "./lib/supabase/client";
+import {
+  SESSIONS_UPDATED_EVENT_NAME,
+  clearAllSessions,
+  deleteSessionById,
+  loadSessions,
+} from "./lib/supabase/sessions";
 import type {
   DailyWarmUpSession,
   OffTheCuffSession,
@@ -21,7 +28,6 @@ import type {
   Session,
   TongueTwisterSession,
 } from "./types/session";
-import { parseSession } from "./types/session";
 
 type ModeCard = {
   modeId: "off-the-cuff" | "tongue-twisters" | "pen-speaking" | "daily-warm-up";
@@ -88,7 +94,6 @@ const MODE_CARD_STYLES: Record<
   },
 };
 
-const SESSION_HISTORY_STORAGE_KEY = "articulate-history";
 const MAX_RECENT_SESSIONS = 30;
 const RING_RADIUS = 42;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -191,37 +196,6 @@ const createInlineActiveDot = (
 
   return InlineActiveDot;
 };
-
-const writeSessionHistory = (sessions: Session[]) => {
-  try {
-    localStorage.setItem(SESSION_HISTORY_STORAGE_KEY, JSON.stringify(sessions));
-    window.dispatchEvent(new Event("articulate-history-updated"));
-  } catch (error) {
-    console.error("Failed to write session history", error);
-  }
-};
-
-const subscribeToHistoryChanges = (onStoreChange: () => void) => {
-  if (typeof window === "undefined") return () => {};
-  const handleChange = () => onStoreChange();
-  window.addEventListener("storage", handleChange);
-  window.addEventListener("articulate-history-updated", handleChange);
-  return () => {
-    window.removeEventListener("storage", handleChange);
-    window.removeEventListener("articulate-history-updated", handleChange);
-  };
-};
-
-const getHistorySnapshot = () => {
-  if (typeof window === "undefined") return "[]";
-  try {
-    return localStorage.getItem(SESSION_HISTORY_STORAGE_KEY) ?? "[]";
-  } catch {
-    return "[]";
-  }
-};
-
-const getHistoryServerSnapshot = () => "[]";
 
 const formatSessionDate = (timestamp: number) => {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -332,25 +306,45 @@ const computeStreak = (sessions: Session[]) => {
 };
 
 export default function Home() {
-  const historySnapshot = useSyncExternalStore(
-    subscribeToHistoryChanges,
-    getHistorySnapshot,
-    getHistoryServerSnapshot
-  );
-  const sessions = useMemo(() => {
-    try {
-      const parsed = JSON.parse(historySnapshot) as unknown;
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map(parseSession).filter((session): session is Session => session !== null);
-    } catch {
-      return [];
-    }
-  }, [historySnapshot]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [expandedSessionIds, setExpandedSessionIds] = useState<Record<string, boolean>>({});
   const [chartMode, setChartMode] = useState<"combined" | "byMode">("combined");
 
   useEffect(() => {
     document.title = "Dashboard";
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createSupabaseBrowserClient();
+
+    const refetch = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const fresh = await loadSessions();
+      if (cancelled) return;
+      setIsLoggedIn(Boolean(userData.user));
+      setSessions(fresh);
+      setIsLoadingSessions(false);
+    };
+
+    void refetch();
+
+    const { data: authSub } = supabase.auth.onAuthStateChange(() => {
+      void refetch();
+    });
+
+    const handleUpdate = () => {
+      void refetch();
+    };
+    window.addEventListener(SESSIONS_UPDATED_EVENT_NAME, handleUpdate);
+
+    return () => {
+      cancelled = true;
+      authSub.subscription.unsubscribe();
+      window.removeEventListener(SESSIONS_UPDATED_EVENT_NAME, handleUpdate);
+    };
   }, []);
 
   const hasSessions = sessions.length > 0;
@@ -437,20 +431,19 @@ export default function Home() {
     setExpandedSessionIds((previous) => ({ ...previous, [sessionId]: !previous[sessionId] }));
   };
 
-  const deleteSession = (sessionId: string) => {
+  const deleteSession = async (sessionId: string) => {
     const confirmed = window.confirm("Delete this session?");
     if (!confirmed) return;
-    const nextSessions = sessions.filter((session) => session.id !== sessionId);
-    writeSessionHistory(nextSessions);
+    await deleteSessionById(sessionId);
   };
 
-  const clearAllHistory = () => {
+  const clearAllHistory = async () => {
     const confirmed = window.confirm(
       `This will delete all ${sessions.length} sessions. This cannot be undone.`
     );
     if (!confirmed) return;
     setExpandedSessionIds({});
-    writeSessionHistory([]);
+    await clearAllSessions();
   };
 
   const badgesSection = (
@@ -497,18 +490,24 @@ export default function Home() {
           </div>
         </div>
 
-        {!hasSessions ? (
+        {isLoadingSessions ? (
+          <div className="mt-10 rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center">
+            <p className="text-sm text-slate-400">Loading…</p>
+          </div>
+        ) : !hasSessions ? (
           <>
             <div className="mt-10 rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center">
               <h2 className="text-2xl font-semibold text-slate-100">No sessions yet</h2>
               <p className="mt-2 text-slate-300">
-                Complete your first speaking session to start tracking your progress.
+                {isLoggedIn
+                  ? "Complete your first speaking session to start tracking your progress."
+                  : "Log in to start tracking your progress."}
               </p>
               <Link
-                href="/off-the-cuff"
+                href={isLoggedIn ? "/off-the-cuff" : "/login"}
                 className="mt-6 inline-flex rounded-xl bg-sky-500 px-5 py-2.5 font-semibold text-slate-950 shadow-lg shadow-sky-500/30 transition-all duration-150 ease-out hover:scale-[1.02] hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
               >
-                Start your first session
+                {isLoggedIn ? "Start your first session" : "Log in"}
               </Link>
             </div>
             {badgesSection}

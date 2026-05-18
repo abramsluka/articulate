@@ -1,14 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { TOTAL_WARM_UP_SECONDS, WARM_UP_STEPS } from "../data/warmUpSteps";
+import { saveSession } from "../lib/supabase/sessions";
 import type { DailyWarmUpSession } from "../types/session";
 
 type Phase = "welcome" | "in-progress" | "complete";
 
-const SESSION_HISTORY_STORAGE_KEY = "articulate-history";
-const SESSION_HISTORY_LIMIT = 365;
+type SaveStatus =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved" }
+  | { kind: "requires-login" }
+  | { kind: "error"; message: string };
+
 const TOTAL_STEPS = WARM_UP_STEPS.length;
 
 const formatDuration = (seconds: number) =>
@@ -22,7 +28,8 @@ export default function DailyWarmUpPage() {
   const [stepsCompleted, setStepsCompleted] = useState(0);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [totalDurationSeconds, setTotalDurationSeconds] = useState(0);
-  const hasSavedSessionRef = useRef(false);
+  const [hasSaved, setHasSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
 
   const currentStep = WARM_UP_STEPS[currentStepIndex];
   const progressPercent = ((currentStepIndex + 1) / TOTAL_STEPS) * 100;
@@ -48,6 +55,35 @@ export default function DailyWarmUpPage() {
     }));
   }, []);
 
+  const persistCompletedSession = useCallback(
+    async (completedSteps: number, durationSeconds: number) => {
+      if (hasSaved) return;
+      setHasSaved(true);
+      const timestamp = Date.now();
+      const cappedSteps = Math.min(completedSteps, TOTAL_STEPS);
+      const overallScore = Math.round((cappedSteps / TOTAL_STEPS) * 10 * 10) / 10;
+      const session: DailyWarmUpSession = {
+        mode: "daily-warm-up",
+        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${timestamp}`,
+        timestamp,
+        durationSeconds,
+        stepsCompleted: cappedSteps,
+        totalSteps: TOTAL_STEPS,
+        overallScore,
+      };
+      setSaveStatus({ kind: "saving" });
+      const result = await saveSession(session);
+      if (result.ok) {
+        setSaveStatus({ kind: "saved" });
+      } else if (result.requiresLogin) {
+        setSaveStatus({ kind: "requires-login" });
+      } else {
+        setSaveStatus({ kind: "error", message: result.error });
+      }
+    },
+    [hasSaved]
+  );
+
   const completeCurrentStepAndMove = useCallback(() => {
     const completedCount = Math.min(stepsCompleted + 1, TOTAL_STEPS);
     setStepsCompleted(completedCount);
@@ -56,6 +92,7 @@ export default function DailyWarmUpPage() {
       const durationSeconds = startedAt ? Math.max(1, Math.round((Date.now() - startedAt) / 1000)) : 0;
       setTotalDurationSeconds(durationSeconds);
       setPhase("complete");
+      void persistCompletedSession(completedCount, durationSeconds);
       return;
     }
 
@@ -63,7 +100,7 @@ export default function DailyWarmUpPage() {
     setCurrentStepIndex(nextStepIndex);
     setSecondsRemaining(WARM_UP_STEPS[nextStepIndex].durationSeconds);
     setIsPaused(false);
-  }, [currentStepIndex, startedAt, stepsCompleted]);
+  }, [currentStepIndex, persistCompletedSession, startedAt, stepsCompleted]);
 
   const finishSessionNow = useCallback(() => {
     const completedCount = Math.min(Math.max(stepsCompleted, currentStepIndex + 1), TOTAL_STEPS);
@@ -71,7 +108,8 @@ export default function DailyWarmUpPage() {
     const durationSeconds = startedAt ? Math.max(1, Math.round((Date.now() - startedAt) / 1000)) : 0;
     setTotalDurationSeconds(durationSeconds);
     setPhase("complete");
-  }, [currentStepIndex, startedAt, stepsCompleted]);
+    void persistCompletedSession(completedCount, durationSeconds);
+  }, [currentStepIndex, persistCompletedSession, startedAt, stepsCompleted]);
 
   useEffect(() => {
     if (phase !== "in-progress" || isPaused || secondsRemaining <= 0) return;
@@ -94,34 +132,14 @@ export default function DailyWarmUpPage() {
   }, [phase, isPaused, secondsRemaining, completeCurrentStepAndMove]);
 
   useEffect(() => {
-    if (phase !== "complete" || hasSavedSessionRef.current) return;
-    hasSavedSessionRef.current = true;
-
-    try {
-      const timestamp = Date.now();
-      const totalSteps = TOTAL_STEPS;
-      const overallScore =
-        Math.round((Math.min(stepsCompleted, totalSteps) / totalSteps) * 10 * 10) / 10;
-      const session: DailyWarmUpSession = {
-        mode: "daily-warm-up",
-        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${timestamp}`,
-        timestamp,
-        durationSeconds: totalDurationSeconds,
-        stepsCompleted: Math.min(stepsCompleted, totalSteps),
-        totalSteps,
-        overallScore,
-      };
-
-      const existingRaw = localStorage.getItem(SESSION_HISTORY_STORAGE_KEY);
-      const existingHistory = existingRaw ? (JSON.parse(existingRaw) as unknown) : [];
-      const sessions = Array.isArray(existingHistory) ? existingHistory : [];
-      const nextHistory = [session, ...sessions].slice(0, SESSION_HISTORY_LIMIT);
-      localStorage.setItem(SESSION_HISTORY_STORAGE_KEY, JSON.stringify(nextHistory));
-      window.dispatchEvent(new Event("articulate-history-updated"));
-    } catch (error) {
-      console.error("Failed to persist daily warm-up session history", error);
-    }
-  }, [phase, stepsCompleted, totalDurationSeconds]);
+    if (saveStatus.kind !== "saved") return;
+    const timeoutId = window.setTimeout(() => {
+      setSaveStatus((current) => (current.kind === "saved" ? { kind: "idle" } : current));
+    }, 4000);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [saveStatus]);
 
   if (phase === "welcome") {
     return (
@@ -163,7 +181,8 @@ export default function DailyWarmUpPage() {
               setStepsCompleted(0);
               setStartedAt(Date.now());
               setTotalDurationSeconds(0);
-              hasSavedSessionRef.current = false;
+              setHasSaved(false);
+              setSaveStatus({ kind: "idle" });
             }}
             className="mt-6 w-full rounded-2xl bg-amber-400 px-5 py-3 text-base font-semibold text-slate-950 shadow-lg shadow-amber-500/30 transition-all duration-150 ease-out hover:scale-[1.01] hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:mt-7 md:py-3.5 md:text-lg"
           >
@@ -198,6 +217,25 @@ export default function DailyWarmUpPage() {
           <p className="mt-5 text-sm leading-relaxed text-slate-300 md:text-base">
             Nice — your voice is warm. Come back tomorrow to keep the streak going.
           </p>
+
+          {saveStatus.kind === "saved" ? (
+            <div className="mt-5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-200">
+              Saved to your account ✓
+            </div>
+          ) : null}
+          {saveStatus.kind === "requires-login" ? (
+            <div className="mt-5 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-100">
+              Log in to save this session.{" "}
+              <Link href="/login" className="font-semibold text-rose-50 underline underline-offset-4 hover:text-white">
+                Log in
+              </Link>
+            </div>
+          ) : null}
+          {saveStatus.kind === "error" ? (
+            <div className="mt-5 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-100">
+              Couldn&apos;t save: {saveStatus.message}
+            </div>
+          ) : null}
 
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Link

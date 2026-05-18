@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { REPS_PER_SESSION, TWISTERS, type Twister } from "../data/twisters";
+import { saveSession } from "../lib/supabase/sessions";
 import type { TongueTwisterSession } from "../types/session";
 
 type AnalyzeTwisterResponse = {
@@ -15,8 +17,12 @@ type AnalyzeTwisterResponse = {
   feedback: string;
 };
 
-const SESSION_HISTORY_STORAGE_KEY = "articulate-history";
-const SESSION_HISTORY_LIMIT = 365;
+type SaveStatus =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "saved" }
+  | { kind: "requires-login" }
+  | { kind: "error"; message: string };
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -88,6 +94,8 @@ export default function TongueTwistersPage() {
     "idle"
   );
   const [analysisResult, setAnalysisResult] = useState<AnalyzeTwisterResponse | null>(null);
+  const [hasSaved, setHasSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ kind: "idle" });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -131,6 +139,16 @@ export default function TongueTwistersPage() {
     };
   }, [isRecording]);
 
+  useEffect(() => {
+    if (saveStatus.kind !== "saved") return;
+    const timeoutId = window.setTimeout(() => {
+      setSaveStatus((current) => (current.kind === "saved" ? { kind: "idle" } : current));
+    }, 4000);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [saveStatus]);
+
   const resetRecordingState = () => {
     setIsRecording(false);
     setElapsedSeconds(0);
@@ -139,6 +157,8 @@ export default function TongueTwistersPage() {
     setTranscript("");
     setAnalysisStatus("idle");
     setAnalysisResult(null);
+    setHasSaved(false);
+    setSaveStatus({ kind: "idle" });
     audioChunksRef.current = [];
     recordedBlobRef.current = null;
     if (mediaStreamRef.current) {
@@ -226,40 +246,41 @@ export default function TongueTwistersPage() {
     }
   };
 
-  const saveSession = (
+  const persistSession = async (
     twister: Twister,
     nextTranscript: string,
     durationSeconds: number,
     analysis: AnalyzeTwisterResponse
   ) => {
-    try {
-      const timestamp = Date.now();
-      const session: TongueTwisterSession = {
-        mode: "tongue-twisters",
-        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${timestamp}`,
-        timestamp,
-        twisterId: twister.id,
-        twisterText: twister.text,
-        difficulty: twister.difficulty,
-        transcript: nextTranscript,
-        durationSeconds,
-        overallScore: analysis.overallScore,
-        accuracyScore: analysis.accuracyScore,
-        speedScore: analysis.speedScore,
-        clarityScore: analysis.clarityScore,
-        actualWpm: analysis.actualWpm,
-        targetWpm: analysis.targetWpm,
-        mispronouncedWords: analysis.mispronouncedWords,
-        feedback: analysis.feedback,
-      };
-      const existingRaw = localStorage.getItem(SESSION_HISTORY_STORAGE_KEY);
-      const existingHistory = existingRaw ? (JSON.parse(existingRaw) as unknown) : [];
-      const sessions = Array.isArray(existingHistory) ? existingHistory : [];
-      const nextHistory = [session, ...sessions].slice(0, SESSION_HISTORY_LIMIT);
-      localStorage.setItem(SESSION_HISTORY_STORAGE_KEY, JSON.stringify(nextHistory));
-      window.dispatchEvent(new Event("articulate-history-updated"));
-    } catch (error) {
-      console.error("Failed to persist tongue twister session history", error);
+    if (hasSaved) return;
+    const timestamp = Date.now();
+    const session: TongueTwisterSession = {
+      mode: "tongue-twisters",
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${timestamp}`,
+      timestamp,
+      twisterId: twister.id,
+      twisterText: twister.text,
+      difficulty: twister.difficulty,
+      transcript: nextTranscript,
+      durationSeconds,
+      overallScore: analysis.overallScore,
+      accuracyScore: analysis.accuracyScore,
+      speedScore: analysis.speedScore,
+      clarityScore: analysis.clarityScore,
+      actualWpm: analysis.actualWpm,
+      targetWpm: analysis.targetWpm,
+      mispronouncedWords: analysis.mispronouncedWords,
+      feedback: analysis.feedback,
+    };
+    setHasSaved(true);
+    setSaveStatus({ kind: "saving" });
+    const result = await saveSession(session);
+    if (result.ok) {
+      setSaveStatus({ kind: "saved" });
+    } else if (result.requiresLogin) {
+      setSaveStatus({ kind: "requires-login" });
+    } else {
+      setSaveStatus({ kind: "error", message: result.error });
     }
   };
 
@@ -319,7 +340,7 @@ export default function TongueTwistersPage() {
 
       setAnalysisResult(analysisData);
       setAnalysisStatus("done");
-      saveSession(currentTwister, nextTranscript, safeDurationSeconds, analysisData);
+      await persistSession(currentTwister, nextTranscript, safeDurationSeconds, analysisData);
     } catch {
       setAnalysisStatus("error");
       setAnalysisResult(null);
@@ -443,6 +464,25 @@ export default function TongueTwistersPage() {
                 {analysisResult.overallScore.toFixed(1)}
               </span>
             </div>
+
+            {saveStatus.kind === "saved" ? (
+              <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-200">
+                Saved to your account ✓
+              </div>
+            ) : null}
+            {saveStatus.kind === "requires-login" ? (
+              <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-100">
+                Log in to save this session.{" "}
+                <Link href="/login" className="font-semibold text-rose-50 underline underline-offset-4 hover:text-white">
+                  Log in
+                </Link>
+              </div>
+            ) : null}
+            {saveStatus.kind === "error" ? (
+              <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-100">
+                Couldn&apos;t save: {saveStatus.message}
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-lg bg-slate-800/60 p-2">
