@@ -1,7 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { rateLimit } from "@/app/lib/rate-limit";
+
+const safeCodeMatch = (candidate: string, expected: string) => {
+  const candidateDigest = createHash("sha256").update(candidate).digest();
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(candidateDigest, expectedDigest);
+};
 
 export async function POST(request: NextRequest) {
+  const limited = rateLimit(request, "demo-login", 10, 5 * 60 * 1000);
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { code } = body;
@@ -18,7 +29,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (typeof code !== "string" || code !== accessCode) {
+    if (typeof code !== "string" || !safeCodeMatch(code, accessCode)) {
       return NextResponse.json(
         { error: "Invalid demo access code" },
         { status: 401 }

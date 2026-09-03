@@ -1,11 +1,15 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/app/lib/rate-limit";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(request: NextRequest) {
+  const limited = rateLimit(request, "transcribe", 20, 5 * 60 * 1000);
+  if (limited) return limited;
+
   try {
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File | null;
