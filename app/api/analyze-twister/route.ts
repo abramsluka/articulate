@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/app/lib/api-auth";
 import { rateLimit } from "@/app/lib/rate-limit";
 
 const anthropic = new Anthropic({
@@ -66,6 +67,9 @@ const isTwisterAnalysisResponse = (value: unknown): value is TwisterAnalysisResp
 export async function POST(request: NextRequest) {
   const limited = rateLimit(request, "analyze-twister", 20, 5 * 60 * 1000);
   if (limited) return limited;
+
+  const unauthorized = await requireAuth(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = (await request.json()) as Partial<AnalyzeTwisterBody>;

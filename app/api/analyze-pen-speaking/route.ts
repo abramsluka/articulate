@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import type { PassageDifficulty } from "@/app/data/penPassages";
+import { requireAuth } from "@/app/lib/api-auth";
 import { rateLimit } from "@/app/lib/rate-limit";
 
 const anthropic = new Anthropic({
@@ -52,6 +53,9 @@ const isPenSpeakingAnalysisResponse = (value: unknown): value is PenSpeakingAnal
 export async function POST(request: NextRequest) {
   const limited = rateLimit(request, "analyze-pen-speaking", 20, 5 * 60 * 1000);
   if (limited) return limited;
+
+  const unauthorized = await requireAuth(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = (await request.json()) as Partial<AnalyzePenSpeakingBody>;

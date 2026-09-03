@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SpiderChart from "../components/SpiderChart";
+import { AuthRequiredError, fetchWithSessionRefresh } from "../lib/api-client";
 import { saveSession } from "../lib/supabase/sessions";
 import type { OffTheCuffSession } from "../types/session";
 
@@ -560,7 +561,7 @@ export default function Home() {
     "idle" | "transcribing" | "done" | "error"
   >("idle");
   const [analysisStatus, setAnalysisStatus] = useState<
-    "idle" | "analyzing" | "done" | "error"
+    "idle" | "analyzing" | "done" | "error" | "requires-login"
   >("idle");
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isTranscriptionSupported, setIsTranscriptionSupported] = useState(true);
@@ -1003,7 +1004,7 @@ export default function Home() {
           formData.append("audio", recording, `recording.${fileExtension}`);
 
           try {
-            const response = await fetch("/api/transcribe", {
+            const response = await fetchWithSessionRefresh("/api/transcribe", {
               method: "POST",
               body: formData,
             });
@@ -1021,7 +1022,7 @@ export default function Home() {
               setAnalysisStatus("analyzing");
 
               try {
-                const analysisResponse = await fetch("/api/analyze", {
+                const analysisResponse = await fetchWithSessionRefresh("/api/analyze", {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -1098,12 +1099,14 @@ export default function Home() {
                   setAnalysisResult(null);
                   setAnalysisStatus("error");
                 }
-              } catch {
+              } catch (analysisError) {
                 if (requestId !== transcriptionRequestIdRef.current) {
                   return;
                 }
                 setAnalysisResult(null);
-                setAnalysisStatus("error");
+                setAnalysisStatus(
+                  analysisError instanceof AuthRequiredError ? "requires-login" : "error"
+                );
               }
             } else {
               setFinalTranscript(fallbackTranscript);
@@ -1111,13 +1114,15 @@ export default function Home() {
               setAnalysisStatus("error");
               setAnalysisResult(null);
             }
-          } catch {
+          } catch (transcriptionError) {
             if (requestId !== transcriptionRequestIdRef.current) {
               return;
             }
             setFinalTranscript(fallbackTranscript);
             setTranscriptionStatus("error");
-            setAnalysisStatus("error");
+            setAnalysisStatus(
+              transcriptionError instanceof AuthRequiredError ? "requires-login" : "error"
+            );
             setAnalysisResult(null);
           }
         }
@@ -1647,6 +1652,16 @@ export default function Home() {
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
                       <p className="text-xs text-slate-400 md:text-sm">
                         Coaching analysis unavailable for this session
+                      </p>
+                    </div>
+                  ) : null}
+                  {analysisStatus === "requires-login" ? (
+                    <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4">
+                      <p className="text-sm text-rose-100">
+                        Your session has expired. Please sign in again to analyze recordings.{" "}
+                        <Link href="/login" className="font-semibold text-rose-50 underline underline-offset-4 hover:text-white">
+                          Log in
+                        </Link>
                       </p>
                     </div>
                   ) : null}

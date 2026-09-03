@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { PEN_PASSAGES, type PenPassage } from "../data/penPassages";
+import { AuthRequiredError, fetchWithSessionRefresh } from "../lib/api-client";
 import { saveSession } from "../lib/supabase/sessions";
 import type { PenSpeakingSession } from "../types/session";
 
@@ -88,7 +89,7 @@ export default function PenSpeakingPage() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingError, setRecordingError] = useState("");
   const [transcript, setTranscript] = useState("");
-  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "transcribing" | "analyzing" | "done" | "error">(
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "transcribing" | "analyzing" | "done" | "error" | "requires-login">(
     "idle"
   );
   const [analysisResult, setAnalysisResult] = useState<AnalyzePenSpeakingResponse | null>(null);
@@ -293,7 +294,7 @@ export default function PenSpeakingPage() {
     setAnalysisResult(null);
 
     try {
-      const transcriptionResponse = await fetch("/api/transcribe", {
+      const transcriptionResponse = await fetchWithSessionRefresh("/api/transcribe", {
         method: "POST",
         body: formData,
       });
@@ -310,7 +311,7 @@ export default function PenSpeakingPage() {
       setTranscript(nextTranscript);
       setAnalysisStatus("analyzing");
 
-      const analysisResponse = await fetch("/api/analyze-pen-speaking", {
+      const analysisResponse = await fetchWithSessionRefresh("/api/analyze-pen-speaking", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -335,8 +336,8 @@ export default function PenSpeakingPage() {
       setAnalysisResult(analysisData);
       setAnalysisStatus("done");
       await persistSession(currentPassage, nextTranscript, safeDurationSeconds, analysisData);
-    } catch {
-      setAnalysisStatus("error");
+    } catch (error) {
+      setAnalysisStatus(error instanceof AuthRequiredError ? "requires-login" : "error");
       setAnalysisResult(null);
     }
   };
@@ -437,6 +438,15 @@ export default function PenSpeakingPage() {
         {analysisStatus === "error" ? (
           <div className="mt-6 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100">
             Analysis failed for this attempt. Please record again and retry.
+          </div>
+        ) : null}
+
+        {analysisStatus === "requires-login" ? (
+          <div className="mt-6 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100">
+            Your session has expired. Please sign in again to analyze recordings.{" "}
+            <Link href="/login" className="font-semibold text-rose-50 underline underline-offset-4 hover:text-white">
+              Log in
+            </Link>
           </div>
         ) : null}
 

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/app/lib/api-auth";
 import { rateLimit } from "@/app/lib/rate-limit";
 
 const anthropic = new Anthropic({
@@ -15,6 +16,9 @@ const stripJsonCodeFences = (rawText: string) => {
 export async function POST(request: NextRequest) {
   const limited = rateLimit(request, "analyze", 20, 5 * 60 * 1000);
   if (limited) return limited;
+
+  const unauthorized = await requireAuth(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = await request.json();

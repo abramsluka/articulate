@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { REPS_PER_SESSION, TWISTERS, type Twister } from "../data/twisters";
+import { AuthRequiredError, fetchWithSessionRefresh } from "../lib/api-client";
 import { saveSession } from "../lib/supabase/sessions";
 import type { TongueTwisterSession } from "../types/session";
 
@@ -90,7 +91,7 @@ export default function TongueTwistersPage() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingError, setRecordingError] = useState("");
   const [transcript, setTranscript] = useState("");
-  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "transcribing" | "analyzing" | "done" | "error">(
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "transcribing" | "analyzing" | "done" | "error" | "requires-login">(
     "idle"
   );
   const [analysisResult, setAnalysisResult] = useState<AnalyzeTwisterResponse | null>(null);
@@ -297,7 +298,7 @@ export default function TongueTwistersPage() {
     setAnalysisResult(null);
 
     try {
-      const transcriptionResponse = await fetch("/api/transcribe", {
+      const transcriptionResponse = await fetchWithSessionRefresh("/api/transcribe", {
         method: "POST",
         body: formData,
       });
@@ -314,7 +315,7 @@ export default function TongueTwistersPage() {
       setTranscript(nextTranscript);
       setAnalysisStatus("analyzing");
 
-      const analysisResponse = await fetch("/api/analyze-twister", {
+      const analysisResponse = await fetchWithSessionRefresh("/api/analyze-twister", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -341,8 +342,8 @@ export default function TongueTwistersPage() {
       setAnalysisResult(analysisData);
       setAnalysisStatus("done");
       await persistSession(currentTwister, nextTranscript, safeDurationSeconds, analysisData);
-    } catch {
-      setAnalysisStatus("error");
+    } catch (error) {
+      setAnalysisStatus(error instanceof AuthRequiredError ? "requires-login" : "error");
       setAnalysisResult(null);
     }
   };
@@ -449,6 +450,15 @@ export default function TongueTwistersPage() {
         {analysisStatus === "error" ? (
           <div className="mt-6 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100">
             Analysis failed for this attempt. Please record again and retry.
+          </div>
+        ) : null}
+
+        {analysisStatus === "requires-login" ? (
+          <div className="mt-6 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-100">
+            Your session has expired. Please sign in again to analyze recordings.{" "}
+            <Link href="/login" className="font-semibold text-rose-50 underline underline-offset-4 hover:text-white">
+              Log in
+            </Link>
           </div>
         ) : null}
 

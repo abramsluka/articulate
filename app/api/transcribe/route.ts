@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/app/lib/api-auth";
 import { rateLimit } from "@/app/lib/rate-limit";
 
 const openai = new OpenAI({
@@ -9,6 +10,9 @@ const openai = new OpenAI({
 export async function POST(request: NextRequest) {
   const limited = rateLimit(request, "transcribe", 20, 5 * 60 * 1000);
   if (limited) return limited;
+
+  const unauthorized = await requireAuth(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const formData = await request.formData();
