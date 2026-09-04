@@ -1,14 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
-import demoSeed from "@/app/data/demoSeed.json";
 
 // Nightly demo-account reset, invoked by Vercel cron (see vercel.json).
-// Deletes every session row belonging to the demo user, then re-inserts the
-// single seeded session backdated ~2.5 days. Recordings never reach the
-// server or storage (audio stays as in-browser blobs), so session rows are
-// the only demo state to clean.
-const SEED_AGE_MS = 60 * 60 * 60 * 1000;
+// Deletes every session row belonging to the demo user, leaving the account
+// on the empty "No sessions yet" state so each reviewer starts fresh.
+// Recordings never reach the server or storage (audio stays as in-browser
+// blobs), so session rows are the only demo state to clean.
 
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -56,25 +53,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const timestamp = Date.now() - SEED_AGE_MS;
-  const seedSession = { ...demoSeed, id: randomUUID(), timestamp };
-  const { error: insertError } = await admin.from("sessions").insert({
-    user_id: demoUser.id,
-    mode: seedSession.mode,
-    timestamp_ms: timestamp,
-    overall_score: seedSession.overallScore,
-    data: seedSession,
-  });
-  if (insertError) {
-    return NextResponse.json(
-      { error: `Seed insert failed: ${insertError.message}` },
-      { status: 500 }
-    );
-  }
-
   return NextResponse.json({
     deletedSessions: deletedRows?.length ?? 0,
-    seededSessionId: seedSession.id,
-    seededTimestamp: new Date(timestamp).toISOString(),
   });
 }
