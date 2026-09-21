@@ -10,7 +10,7 @@ export default function SignupPage() {
           </h1>
           <p className="mt-4 text-pretty text-slate-300">
             We're running a private beta to keep this app focused and stable. If you'd like access, email
-            pabrams@gmail.com and we'll send you an invitation.
+            abramsluka@gmail.com and we'll send you an invitation.
           </p>
           <p className="mt-5 text-sm text-slate-400">
             Already invited? Check your email for a sign-in link or{" "}

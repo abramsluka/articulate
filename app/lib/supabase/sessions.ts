@@ -63,9 +63,14 @@ export async function loadSessions(): Promise<Session[]> {
 
 export async function deleteSessionById(sessionId: string): Promise<boolean> {
   const supabase = createSupabaseBrowserClient();
+  const { data: userData } = await supabase.auth.getUser();
+
+  if (!userData.user) return false;
+
   const { error } = await supabase
     .from("sessions")
     .delete()
+    .eq("user_id", userData.user.id)
     .eq("data->>id", sessionId);
 
   if (error) {
